@@ -21,5 +21,5 @@
 - Physical deletion occurs on inbox activity, not precisely at the expiry moment. For a firm 24-hour data deletion guarantee, add a scheduled cleanup Worker.
 - Audio support depends on MediaRecorder and browser codecs. Test with iOS Safari, Chrome and Android; recordings might be shorter than the cap when the compressed size limit is reached.
 - No end-to-end encryption, verified identity, moderation or account abuse reports. Do not position this as a secure/private messenger.
-
+V5 - deployment test 
 © Matthew Kwong 2026.
