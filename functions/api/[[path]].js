@@ -1,8 +1,62 @@
+
+// Web Push (RFC 8291 + RFC 8292), implemented with Cloudflare Web Crypto; no npm dependencies.
+const pEnc=new TextEncoder();
+const pB64=s=>{const a=atob(String(s).replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-String(s).length%4)%4));return Uint8Array.from(a,c=>c.charCodeAt(0))};
+const pUrl=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const pJoin=(...parts)=>{const a=parts.map(x=>x instanceof Uint8Array?x:new Uint8Array(x)),out=new Uint8Array(a.reduce((n,x)=>n+x.length,0));let i=0;for(const x of a){out.set(x,i);i+=x.length}return out};
+const pHKDF=async(ikm,salt,info,n)=>{const key=await crypto.subtle.importKey('raw',salt,'HMAC',false,['sign']);const prk=await crypto.subtle.sign('HMAC',key,ikm);const prkKey=await crypto.subtle.importKey('raw',prk,'HMAC',false,['sign']);return new Uint8Array(await crypto.subtle.sign('HMAC',prkKey,pJoin(info,new Uint8Array([1])))).slice(0,n)};
+const pInfo=s=>pEnc.encode(s+'\0');
+async function pEncrypt(sub,payload){
+ const clientPublic=pB64(sub.p256dh),auth=pB64(sub.auth);
+ if(clientPublic.length!==65||auth.length!==16)throw Error('Invalid subscription keys');
+ const server=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+ const remote=await crypto.subtle.importKey('raw',clientPublic,{name:'ECDH',namedCurve:'P-256'},false,[]);
+ const shared=new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:remote},server.privateKey,256));
+ const serverPublic=new Uint8Array(await crypto.subtle.exportKey('raw',server.publicKey));
+ const prk=await pHKDF(shared,auth,pInfo('Content-Encoding: auth'),32);
+ const ikm=await pHKDF(prk,new Uint8Array(32),pJoin(pInfo('WebPush: info'),clientPublic,serverPublic),32);
+ const salt=crypto.getRandomValues(new Uint8Array(16));
+ const cek=await pHKDF(ikm,salt,pInfo('Content-Encoding: aes128gcm'),16);
+ const nonce=await pHKDF(ikm,salt,pInfo('Content-Encoding: nonce'),12);
+ const aes=await crypto.subtle.importKey('raw',cek,'AES-GCM',false,['encrypt']);
+ const plain=pJoin(pEnc.encode(JSON.stringify(payload)),new Uint8Array([2]));
+ const cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},aes,plain));
+ const rs=new Uint8Array([0,0,16,0]);
+ return pJoin(salt,rs,new Uint8Array([serverPublic.length]),serverPublic,cipher);
+}
+async function pJwt(endpoint,env){
+ const jwk=JSON.parse(env.VAPID_PRIVATE_JWK||'{}');
+ const key=await crypto.subtle.importKey('jwk',jwk,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+ const origin=new URL(endpoint).origin;
+ const header=pUrl(pEnc.encode(JSON.stringify({typ:'JWT',alg:'ES256'})));
+ const payload=pUrl(pEnc.encode(JSON.stringify({aud:origin,exp:Math.floor(Date.now()/1000)+3600,sub:env.VAPID_SUBJECT||'https://ping-lah-sg.pages.dev'})));
+ const input=header+'.'+payload;
+ const sig=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,pEnc.encode(input));
+ return input+'.'+pUrl(sig);
+}
+async function pSendOne(env,sub,payload){
+ const endpoint=new URL(sub.endpoint);if(endpoint.protocol!=='https:'||!['443',''].includes(endpoint.port))throw Error('Invalid push endpoint');
+ // Only known push service domains may be contacted (SSRF protection).
+ const h=endpoint.hostname.toLowerCase();
+ if(!(/(^|\.)push\.services\.mozilla\.com$|(^|\.)fcm\.googleapis\.com$|(^|\.)updates\.push\.services\.mozilla\.com$|(^|\.)notify\.windows\.com$|(^|\.)push\.apple\.com$|(^|\.)web\.push\.apple\.com$|(^|\.)push\.safari\.apple\.com$/.test(h)))throw Error('Unrecognized push service');
+ const encrypted=await pEncrypt(sub,payload);
+ const jwt=await pJwt(sub.endpoint,env);
+ const response=await fetch(sub.endpoint,{method:'POST',headers:{'Content-Type':'application/octet-stream','Content-Encoding':'aes128gcm','TTL':'86400','Authorization':'vapid t='+jwt+', k='+env.VAPID_PUBLIC_KEY},body:encrypted});
+ if(response.status===404||response.status===410){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run();return 'expired'}
+ if(!response.ok)throw Error('Push provider HTTP '+response.status);
+ return 'sent';
+}
+async function pNotify(env,recipient,payload){
+ if(!env.VAPID_PRIVATE_JWK||!env.VAPID_PUBLIC_KEY)return;
+ const result=await env.DB.prepare('SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE user_id=? LIMIT 12').bind(recipient).all();
+ await Promise.allSettled((result.results||[]).map(s=>pSendOne(env,s,payload)));
+}
+
 const J=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const hash=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const uid=()=>crypto.randomUUID();const now=()=>Date.now();const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const code=()=>Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>alphabet[x%alphabet.length]).join('');
 const clean=async env=>{const t=now();await env.DB.prepare('DELETE FROM voice_blobs WHERE expires_at <= ?').bind(t).run();await env.DB.prepare('DELETE FROM messages WHERE expires_at <= ?').bind(t).run();await env.DB.prepare('DELETE FROM rate_limits WHERE expires_at <= ?').bind(t).run()};
-export async function onRequest({request,env,params}){try{
+export async function onRequest({request,env,params,context}){try{
  // Public radio directory endpoint. Works without account or D1 and avoids browser CORS failures.
  const publicRoute='/'+(params.path||[]).join('/');
  if(publicRoute==='/radio/stations'&&request.method==='GET'){
@@ -30,13 +84,35 @@ export async function onRequest({request,env,params}){try{
  if(route==='/register'&&method==='POST'){if(await limited('register:'+ip,5,3600000))return J({error:'Too many registrations. Try again later.'},429);const b=await data(),name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Enter a display name'},400);const token=uid()+uid();const recovery=Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();const id=uid();let c;for(let i=0;i<8;i++){c=code();try{await env.DB.prepare('INSERT INTO users(id,code,name,token_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?)').bind(id,c,name,await hash(token),await hash(recovery),now()).run();return J({token,recovery,me:{id,code:c,name}})}catch(e){if(!String(e).includes('UNIQUE'))throw e}}return J({error:'Please retry'},503)}
  const token=(request.headers.get('Authorization')||'').replace(/^Bearer /,'');if(!token)return J({error:'Sign in on this device first'},401);const me=await env.DB.prepare('SELECT id,code,name FROM users WHERE token_hash=?').bind(await hash(token)).first();if(!me)return J({error:'Invalid session'},401);
  if(method==='POST'&&['/friends','/messages','/upload'].includes(route)&&await limited('write:'+me.id,90,3600000))return J({error:'Hourly sending limit reached.'},429);
+
+ if(route==='/push/public-key'&&method==='GET')return J({publicKey:env.VAPID_PUBLIC_KEY||null,configured:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_JWK)});
+ if(route==='/push/subscribe'&&method==='POST'){
+  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_JWK)return J({error:'Push is not configured in Cloudflare yet'},503);
+  const b=await data(),sub=b.subscription||{},endpoint=String(sub.endpoint||''),p256dh=String(sub.keys?.p256dh||''),auth=String(sub.keys?.auth||'');
+  if(endpoint.length>1200||!endpoint.startsWith('https://')||p256dh.length>150||auth.length>100||!p256dh||!auth)return J({error:'Invalid push subscription'},400);
+  try{const host=new URL(endpoint).hostname;if(!/(^|\.)(push\.services\.mozilla\.com|fcm\.googleapis\.com|notify\.windows\.com|push\.apple\.com|web\.push\.apple\.com|push\.safari\.apple\.com)$/.test(host))return J({error:'Unsupported push service'},400)}catch{return J({error:'Invalid endpoint'},400)}
+  await env.DB.prepare('INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth').bind(me.id,endpoint,p256dh,auth,now()).run();return J({ok:true});
+ }
+ if(route==='/push/unsubscribe'&&method==='POST'){const b=await data();await env.DB.prepare('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?').bind(me.id,String(b.endpoint||'')).run();return J({ok:true})}
+ if(route==='/push/test'&&method==='POST'){
+  if(await limited('push-test:'+me.id,5,3600000))return J({error:'Please wait before testing again'},429);
+  const row=await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id=?').bind(me.id).first();
+  if(!row?.n)return J({error:'Enable notifications on this device first'},400);
+  const job=pNotify(env,me.id,{title:'📟 Ping Lah! SG',body:'Test ping successful! Your pager is ready.',url:'/?open=pager',tag:'ping-test-'+now()});
+  if(context?.waitUntil)context.waitUntil(job);else await job;
+  return J({ok:true,devices:row.n});
+ }
  if(route==='/me'&&method==='GET')return J({me});
  if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Name required'},400);await env.DB.prepare('UPDATE users SET name=? WHERE id=?').bind(name,me.id).run();return J({ok:true})}
  if(route==='/friends'&&method==='GET'){const r=await env.DB.prepare('SELECT u.id,u.code,u.name FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=? ORDER BY u.name').bind(me.id).all();return J({friends:r.results})}
  if(route==='/friends'&&method==='POST'){const b=await data();const c=String(b.code||'').trim().toUpperCase();const other=await env.DB.prepare('SELECT id FROM users WHERE code=?').bind(c).first();if(!other)return J({error:'Friend code not found'},404);if(other.id===me.id)return J({error:'You cannot add yourself'},400);const t=now();await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO friends VALUES(?,?,?)').bind(me.id,other.id,t),env.DB.prepare('INSERT OR IGNORE INTO friends VALUES(?,?,?)').bind(other.id,me.id,t)]);return J({ok:true})}
  if(route.startsWith('/friends/')&&method==='DELETE'){const fid=route.split('/')[2];await env.DB.batch([env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,fid),env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(fid,me.id)]);return J({ok:true})}
  if(route==='/messages'&&method==='GET'){await clean(env);const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,kind,body,created_at,expires_at,read_at FROM messages WHERE sender_id=? OR receiver_id=? ORDER BY created_at DESC LIMIT 150').bind(me.id,me.id).all();return J({messages:r.results})}
- if(route==='/messages'&&method==='POST'){const b=await data(),to=String(b.to||''),kind=String(b.kind||'');if(!['page','voice'].includes(kind))return J({error:'Invalid type'},400);const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,to).first();if(!linked)return J({error:'Not a connected friend'},403);let body=null,key=null;const t=now(),id=uid();if(kind==='page'){body=String(b.body||'').trim().slice(0,200);if(!body)return J({error:'Choose a message'},400)}else{key=String(b.key||'');if(!key.startsWith(me.id+'/')||!(/\.(webm|mp4|ogg)$/.test(key)))return J({error:'Upload audio first'},400);if(!await env.DB.prepare('SELECT 1 FROM voice_blobs WHERE id=? AND owner_id=?').bind(key,me.id).first())return J({error:'Recording not found'},400)}await env.DB.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,NULL)').bind(id,me.id,to,kind,body,key,t,t+(kind==='page'?7:1)*86400000).run();return J({ok:true,id})}
+ if(route==='/messages'&&method==='POST'){const b=await data(),to=String(b.to||''),kind=String(b.kind||'');if(!['page','voice'].includes(kind))return J({error:'Invalid type'},400);const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,to).first();if(!linked)return J({error:'Not a connected friend'},403);let body=null,key=null;const t=now(),id=uid();if(kind==='page'){body=String(b.body||'').trim().slice(0,200);if(!body)return J({error:'Choose a message'},400)}else{key=String(b.key||'');if(!key.startsWith(me.id+'/')||!(/\.(webm|mp4|ogg)$/.test(key)))return J({error:'Upload audio first'},400);if(!await env.DB.prepare('SELECT 1 FROM voice_blobs WHERE id=? AND owner_id=?').bind(key,me.id).first())return J({error:'Recording not found'},400)}await env.DB.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,NULL)').bind(id,me.id,to,kind,body,key,t,t+(kind==='page'?7:1)*86400000).run();
+ const alert={title:kind==='page'?'📟 New page from '+me.name:'🎙️ Voice message from '+me.name,body:kind==='page'?body:'You have a new walkie-talkie recording.',url:kind==='page'?'/?open=pager':'/?open=walkie',tag:'ping-'+id};
+ const job=pNotify(env,to,alert).catch(e=>console.error('Push delivery:',e));
+ if(context?.waitUntil)context.waitUntil(job);else await job;
+ return J({ok:true,id})}
  if(route==='/upload'&&method==='POST'){const type=request.headers.get('content-type')||'';if(!/^audio\/(webm|mp4|ogg)/.test(type))return J({error:'Unsupported audio format'},415);const blob=await request.arrayBuffer();if(blob.byteLength>380_000||blob.byteLength<100)return J({error:'Recording too large or empty (380KB max). Please use a shorter recording.'},413);const ext=type.includes('mp4')?'mp4':type.includes('ogg')?'ogg':'webm';const key=me.id+'/'+uid()+'.'+ext;const bytes=new Uint8Array(blob);let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));const base64=btoa(binary);await env.DB.prepare('INSERT INTO voice_blobs(id,owner_id,data_base64,mime,expires_at) VALUES(?,?,?,?,?)').bind(key,me.id,base64,type.split(';')[0],now()+86400000).run();return J({key})}
  if(route.startsWith('/audio/')&&method==='GET'){const id=route.split('/')[2];const m=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND expires_at>?').bind(id,now()).first();if(!m||m.kind!=='voice'||![m.sender_id,m.receiver_id].includes(me.id))return J({error:'Recording unavailable'},404);const obj=await env.DB.prepare('SELECT data_base64,mime FROM voice_blobs WHERE id=? AND expires_at>?').bind(m.object_key,now()).first();if(!obj)return J({error:'Recording expired'},404);const bin=atob(obj.data_base64),bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return new Response(bytes,{headers:{'content-type':obj.mime,'cache-control':'no-store'}})}
  if(route.startsWith('/read/')&&method==='POST'){await env.DB.prepare('UPDATE messages SET read_at=? WHERE id=? AND receiver_id=?').bind(now(),route.split('/')[2],me.id).run();return J({ok:true})}
