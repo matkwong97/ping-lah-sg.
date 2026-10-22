@@ -100,3 +100,6 @@ body.dark .msn-chat-feedback{background:#4b4530;color:#fff1c4;border-color:#8876
 
 /* v31 Quick Connect */
 .friend-qr{background:#fff;border-radius:20px;padding:16px;width:min(100%,310px);margin:18px auto;box-shadow:0 3px 0 #bac7bc;display:flex;justify-content:center}.friend-qr svg{width:100%;height:auto;display:block;image-rendering:pixelated}.qr-identity{text-align:center}.scanner-box{margin:14px 0;padding:12px;border:2px solid #a1b2a5;border-radius:16px}.scanner-box[hidden]{display:none}.scanner-box video{width:100%;max-height:360px;object-fit:cover;border-radius:12px}.friend-preview-area{margin:12px 0}.friend-preview{display:flex;gap:12px;align-items:center;padding:12px;border-radius:12px;background:rgba(130,170,140,.14)}.friend-preview small{display:block}.preview-avatar{font-size:32px}.invite-welcome{padding:15px;margin:12px 0;border:2px solid #c3cfc3;border-radius:14px}.invite-welcome p{line-height:1.5}
+
+/* v32: camera-independent QR image fallback */
+.scan-photo-label{display:block;text-align:center;margin:12px 0 18px;padding:12px;border:2px solid var(--line,#b9c8c0);border-radius:14px;cursor:pointer;font-weight:700;background:#fff;color:#20302b}.scan-photo-input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.scan-photo-label:focus-within{outline:3px solid #ff8061}
