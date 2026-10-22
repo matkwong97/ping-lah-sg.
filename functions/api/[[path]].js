@@ -84,7 +84,7 @@ export async function onRequest({request,env,params,context}){try{
  if(route==='/recover'&&method==='POST'){if(await limited('recover:'+ip,8,3600000))return J({error:'Too many attempts. Try again later.'},429);const b=await data();const recovery=String(b.recovery||'').replace(/\s+/g,'').toUpperCase();if(recovery.length<20)return J({error:'Invalid recovery code'},400);const user=await env.DB.prepare('SELECT id,code,name FROM users WHERE recovery_hash=?').bind(await hash(recovery)).first();if(!user)return J({error:'Recovery code not found'},404);const newToken=uid()+uid(),newRecovery=Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();await env.DB.prepare('UPDATE users SET token_hash=?,recovery_hash=? WHERE id=?').bind(await hash(newToken),await hash(newRecovery),user.id).run();return J({token:newToken,recovery:newRecovery,me:user})}
  
  if(route==='/register'&&method==='POST'){if(await limited('register:'+ip,5,3600000))return J({error:'Too many registrations. Try again later.'},429);const b=await data(),name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Enter a display name'},400);const token=uid()+uid();const recovery=Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();const id=uid();let c;for(let i=0;i<8;i++){c=code();try{await env.DB.prepare('INSERT INTO users(id,code,name,token_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?)').bind(id,c,name,await hash(token),await hash(recovery),now()).run();return J({token,recovery,me:{id,code:c,name}})}catch(e){if(!String(e).includes('UNIQUE'))throw e}}return J({error:'Please retry'},503)}
- const token=(request.headers.get('Authorization')||'').replace(/^Bearer /,'');if(!token)return J({error:'Sign in on this device first'},401);const me=await env.DB.prepare('SELECT id,code,name FROM users WHERE token_hash=?').bind(await hash(token)).first();if(!me)return J({error:'Invalid session'},401);
+ const token=(request.headers.get('Authorization')||'').replace(/^Bearer /,'');if(!token)return J({error:'Sign in on this device first'},401);const me=await env.DB.prepare('SELECT id,code,name,status,status_message,last_seen FROM users WHERE token_hash=?').bind(await hash(token)).first();if(!me)return J({error:'Invalid session'},401);
  if(method==='POST'&&['/friends','/messages','/upload'].includes(route)&&await limited('write:'+me.id,90,3600000))return J({error:'Hourly sending limit reached.'},429);
 
  if(route==='/push/public-key'&&method==='GET')return J({publicKey:env.VAPID_PUBLIC_KEY||null,configured:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_JWK)});
@@ -103,8 +103,36 @@ export async function onRequest({request,env,params,context}){try{
   const outcome=await pNotify(env,me.id,{title:'📟 Ping Lah! SG',body:'Test ping successful! Your pager is ready.',url:'/?open=pager',tag:'ping-test-'+now()});
   return J({ok:outcome.sent>0,...outcome},outcome.sent>0?200:502);
  }
- if(route==='/me'&&method==='GET')return J({me});
- if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Name required'},400);await env.DB.prepare('UPDATE users SET name=? WHERE id=?').bind(name,me.id).run();return J({ok:true})}
+ if(route==='/me'&&method==='GET'){await env.DB.prepare('UPDATE users SET last_seen=? WHERE id=?').bind(now(),me.id).run();return J({me:{...me,last_seen:now()}})}
+ if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60),status=String(b.status||me.status||'online'),status_message=String(b.status_message??me.status_message??'').trim().slice(0,120);if(!name||!['online','away','busy','brb','offline'].includes(status))return J({error:'Invalid profile'},400);await env.DB.prepare('UPDATE users SET name=?,status=?,status_message=? WHERE id=?').bind(name,status,status_message,me.id).run();return J({ok:true})}
+ if(route==='/messenger/nudges'&&method==='GET'){const r=await env.DB.prepare('SELECT id FROM messenger_nudges WHERE receiver_id=? AND seen_at IS NULL ORDER BY created_at DESC LIMIT 30').bind(me.id).all();const count=r.results.length;if(count)await env.DB.prepare('UPDATE messenger_nudges SET seen_at=? WHERE receiver_id=? AND seen_at IS NULL').bind(now(),me.id).run();return J({count});}
+ if(route.startsWith('/messenger/nudge/')&&method==='POST'){const peer=route.split('/')[3];const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);if(await limited('nudge:'+me.id,12,3600000))return J({error:'Too many nudges. Try later.'},429);await env.DB.prepare('INSERT INTO messenger_nudges(id,sender_id,receiver_id,created_at) VALUES(?,?,?,?)').bind(uid(),me.id,peer,now()).run();return J({ok:true});}
+ if(route==='/messenger/presence'&&method==='GET'){
+  await env.DB.prepare('UPDATE users SET last_seen=? WHERE id=?').bind(now(),me.id).run();
+  const r=await env.DB.prepare('SELECT u.id,u.name,u.status,u.status_message,u.last_seen FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=?').bind(me.id).all();
+  return J({me:{...me,last_seen:now()},friends:r.results.map(x=>x.status==='offline'?{...x,last_seen:0}:x)});
+ }
+ if(route.startsWith('/messenger/chat/')&&['GET','POST'].includes(method)){
+  const peer=route.split('/')[3];if(!peer)return J({error:'Friend required'},400);
+  const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
+  if(method==='POST'){
+   if(await limited('chat:'+me.id,120,3600000))return J({error:'Message limit reached. Try again later.'},429);
+   const b=await data(),body=String(b.body||'').trim();if(!body||body.length>1000)return J({error:'Enter a message (maximum 1000 characters)'},400);
+   const id=uid();await env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id,me.id,peer,body,now()).run();return J({ok:true,id});
+  }
+  const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,body,created_at FROM messenger_messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at DESC LIMIT 100').bind(me.id,peer,peer,me.id).all();
+  const ms=r.results.reverse();const ids=ms.map(x=>x.id);let reactions=[];
+  if(ids.length){const q='SELECT message_id,emoji,COUNT(*) AS n FROM messenger_reactions WHERE message_id IN ('+ids.map(()=>'?').join(',')+') GROUP BY message_id,emoji';reactions=(await env.DB.prepare(q).bind(...ids).all()).results}
+  return J({messages:ms.map(m=>({...m,reactions:Object.fromEntries(reactions.filter(x=>x.message_id===m.id).map(x=>[x.emoji,x.n]))}))});
+ }
+ if(route.startsWith('/messenger/react/')&&method==='POST'){
+  const id=route.split('/')[3],b=await data(),emoji=String(b.emoji||'');if(!['❤️','😂','👍','😮','😢'].includes(emoji))return J({error:'Unsupported reaction'},400);
+  const m=await env.DB.prepare('SELECT sender_id,receiver_id FROM messenger_messages WHERE id=?').bind(id).first();if(!m||![m.sender_id,m.receiver_id].includes(me.id))return J({error:'Message unavailable'},404);
+  const peer=m.sender_id===me.id?m.receiver_id:m.sender_id;const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
+  const existing=await env.DB.prepare('SELECT emoji FROM messenger_reactions WHERE message_id=? AND user_id=?').bind(id,me.id).first();
+  if(existing?.emoji===emoji)await env.DB.prepare('DELETE FROM messenger_reactions WHERE message_id=? AND user_id=?').bind(id,me.id).run();
+  else await env.DB.prepare('INSERT INTO messenger_reactions(message_id,user_id,emoji) VALUES(?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET emoji=excluded.emoji').bind(id,me.id,emoji).run();return J({ok:true});
+ }
  if(route==='/friends'&&method==='GET'){const r=await env.DB.prepare('SELECT u.id,u.code,u.name FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=? ORDER BY u.name').bind(me.id).all();return J({friends:r.results})}
  if(route==='/friends'&&method==='POST'){const b=await data();const c=String(b.code||'').trim().toUpperCase();const other=await env.DB.prepare('SELECT id FROM users WHERE code=?').bind(c).first();if(!other)return J({error:'Friend code not found'},404);if(other.id===me.id)return J({error:'You cannot add yourself'},400);const t=now();await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO friends VALUES(?,?,?)').bind(me.id,other.id,t),env.DB.prepare('INSERT OR IGNORE INTO friends VALUES(?,?,?)').bind(other.id,me.id,t)]);return J({ok:true})}
  if(route.startsWith('/friends/')&&method==='DELETE'){const fid=route.split('/')[2];await env.DB.batch([env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,fid),env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(fid,me.id)]);return J({ok:true})}
