@@ -15,3 +15,9 @@
 
 /* v11 radio usability */
 .radio-heart{font-size:1.65rem;min-width:42px;padding:6px;color:#bb4a55;background:transparent;border:0;cursor:pointer}.saved-heart{color:#bb4a55}.radio-tuner input[type=range]{width:100%;height:36px;touch-action:pan-y;accent-color:#b4e8a6;cursor:pointer}.radio-frequency{font-variant-numeric:tabular-nums}.station-row{align-items:center;gap:8px}.station-row .pill{flex-shrink:0}#radioTuningCount{color:#b4e8a6;margin-bottom:10px}
+
+/* v12 messaging and accessibility */
+.inbox-tile{position:relative}.unread-badge{display:inline-flex;align-items:center;justify-content:center;background:#ff7755;color:#152420;border:2px solid #26302d;border-radius:999px;min-width:25px;height:25px;padding:0 5px;font-size:13px;font-weight:900;vertical-align:middle}.inbox-tile .unread-badge{position:absolute;top:5px;right:6px}.emoji-picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0}.emoji-picker span{font-size:13px;font-weight:800}.emoji-btn{padding:7px 9px;font-size:19px;min-width:42px}.new-label{color:#a83e26;font-weight:800}body.dark .unread-badge{color:#152420}
+.account-indicator{font-size:13px;margin:12px 0 0;opacity:.85}
+
+.voice-playback audio{display:block;margin:10px 0;max-width:100%;min-height:42px}
