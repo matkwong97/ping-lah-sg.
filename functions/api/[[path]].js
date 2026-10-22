@@ -49,7 +49,9 @@ async function pSendOne(env,sub,payload){
 async function pNotify(env,recipient,payload){
  if(!env.VAPID_PRIVATE_JWK||!env.VAPID_PUBLIC_KEY)return;
  const result=await env.DB.prepare('SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE user_id=? LIMIT 12').bind(recipient).all();
- await Promise.allSettled((result.results||[]).map(s=>pSendOne(env,s,payload)));
+ const settled=await Promise.allSettled((result.results||[]).map(s=>pSendOne(env,s,payload)));
+ const errors=settled.filter(x=>x.status==='rejected').map(x=>String(x.reason?.message||x.reason||'Unknown error').slice(0,180));
+ return {devices:settled.length,sent:settled.filter(x=>x.status==='fulfilled'&&x.value==='sent').length,expired:settled.filter(x=>x.status==='fulfilled'&&x.value==='expired').length,failed:errors.length,errors};
 }
 
 const J=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
@@ -98,9 +100,8 @@ export async function onRequest({request,env,params,context}){try{
   if(await limited('push-test:'+me.id,5,3600000))return J({error:'Please wait before testing again'},429);
   const row=await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id=?').bind(me.id).first();
   if(!row?.n)return J({error:'Enable notifications on this device first'},400);
-  const job=pNotify(env,me.id,{title:'📟 Ping Lah! SG',body:'Test ping successful! Your pager is ready.',url:'/?open=pager',tag:'ping-test-'+now()});
-  if(context?.waitUntil)context.waitUntil(job);else await job;
-  return J({ok:true,devices:row.n});
+  const outcome=await pNotify(env,me.id,{title:'📟 Ping Lah! SG',body:'Test ping successful! Your pager is ready.',url:'/?open=pager',tag:'ping-test-'+now()});
+  return J({ok:outcome.sent>0,...outcome},outcome.sent>0?200:502);
  }
  if(route==='/me'&&method==='GET')return J({me});
  if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Name required'},400);await env.DB.prepare('UPDATE users SET name=? WHERE id=?').bind(name,me.id).run();return J({ok:true})}
