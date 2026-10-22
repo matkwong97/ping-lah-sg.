@@ -1,6 +1,4 @@
 self.addEventListener('install',event=>self.skipWaiting());
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
-// Background push delivery is intentionally not advertised as enabled until
-// authenticated subscriptions and VAPID delivery are configured server-side.
-self.addEventListener('push',event=>{let data={};try{data=event.data?.json()||{}}catch{};event.waitUntil(self.registration.showNotification('Ping Lah! SG',{body:data.body||'You have a new ping.',icon:'/icon.svg',tag:'ping-lah-new-message'}))});
-self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(self.clients.openWindow('/'))});
+self.addEventListener('push',event=>{let data={};try{data=event.data?.json()||{}}catch{};event.waitUntil(self.registration.showNotification(data.title||'Ping Lah! SG',{body:data.body||'You have a new ping.',icon:'/icon.svg',badge:'/icon.svg',tag:data.tag||'ping-lah-new-message',data:{url:data.url||'/'}}))});
+self.addEventListener('notificationclick',event=>{event.notification.close();const target=new URL(event.notification.data?.url||'/',self.location.origin);if(target.origin!==self.location.origin)return;event.waitUntil((async()=>{const windows=await clients.matchAll({type:'window',includeUncontrolled:true});for(const c of windows){if(new URL(c.url).origin===target.origin){await c.focus();c.navigate(target.href);return}}await clients.openWindow(target.href)})())});
