@@ -77,3 +77,10 @@ body.dark .msn-chat-window .msn-message-head{color:#b8cee1}body.dark .msn-chat-w
 body.dark .msn-chat-window .msn-reactions button{color:#f0f6ff;background:#344858;border-color:#567084}
 body.dark .msn-chat-bottom{background:#293b49;border-color:#536a7d}body.dark .msn-chat-bottom .msn-emoji button{color:#fff}body.dark .msn-chat-bottom .msn-compose input{background:#f7fbff;color:#20344b}
 @media(max-width:380px){.msn-chat-header{gap:6px}.msn-chat-nudge{padding:8px}.msn-chat-bottom{padding-left:8px;padding-right:8px}}
+
+/* v25 Nostalgia Pack */
+.msn-chat-feedback{flex:none;background:#fff2bd;color:#443311;border-bottom:1px solid #d4bb69;padding:10px 14px;font-size:14px;font-weight:700;text-align:center;animation:msnFeedback .2s ease-out}
+.msn-chat-feedback[hidden]{display:none}.msn-typing{min-height:18px;font-size:12px;font-style:italic;color:#526d88;padding:0 3px}.setting-check{display:flex!important;align-items:center;gap:10px;margin:14px 0}.setting-check input{width:auto!important;min-height:0!important;accent-color:#2878bd}
+body.dark .msn-chat-feedback{background:#4b4530;color:#fff1c4;border-color:#887646}body.dark .msn-typing{color:#c5d9e9}
+@keyframes msnFeedback{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.nudge-shake,.msn-chat-feedback{animation:none!important}}
