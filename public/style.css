@@ -12,3 +12,6 @@
 
 /* Analog-style station dial */
 .tuning-scale{display:flex;justify-content:space-between;font:700 11px ui-monospace,monospace;letter-spacing:2px;margin-top:18px;color:#b5f0aa}.radio-tuner input[type=range]{width:100%;accent-color:#f6b081;cursor:pointer;height:24px}.radio-tuner .row{margin-top:12px;justify-content:space-between}.radio-tuner .pill{font-size:13px}.radio-tuner #radioDialLabel{color:#d4f8c7;min-height:22px}
+
+/* v11 radio usability */
+.radio-heart{font-size:1.65rem;min-width:42px;padding:6px;color:#bb4a55;background:transparent;border:0;cursor:pointer}.saved-heart{color:#bb4a55}.radio-tuner input[type=range]{width:100%;height:36px;touch-action:pan-y;accent-color:#b4e8a6;cursor:pointer}.radio-frequency{font-variant-numeric:tabular-nums}.station-row{align-items:center;gap:8px}.station-row .pill{flex-shrink:0}#radioTuningCount{color:#b4e8a6;margin-bottom:10px}
