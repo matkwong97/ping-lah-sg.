@@ -27,3 +27,9 @@
 
 /* v16: elapsed-time counter on physical walkie */
 .record-clock{font:900 24px ui-monospace,SFMono-Regular,monospace;letter-spacing:2px;margin:8px 0;color:#183420}.record-progress{height:9px;border-radius:10px;background:#5a795b;margin:6px 12px 4px;overflow:hidden}.record-progress>div{width:0;height:100%;background:#ff7755;transition:width .1s linear}
+
+/* v18: notification count is pinned inside tile, never overlaps its label */
+.inbox-tile{position:relative!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;overflow:visible!important;padding-right:54px!important}
+.inbox-tile .unread-badge{position:absolute!important;top:12px!important;right:12px!important;left:auto!important;transform:none!important;min-width:25px!important;width:auto!important;height:25px!important;padding:0 7px!important;font-size:12px!important;line-height:1!important;box-shadow:none!important;z-index:2}
+.walkie-history{background:#f7f7f1;border:3px solid #26302d;border-radius:22px;padding:18px;margin:18px 0 24px;color:#26302d}
+.walkie-history-title{font-weight:900;letter-spacing:.4px;margin-bottom:8px}.walkie-history-meta{font-size:14px;min-height:38px}.walkie-history-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0}.walkie-history-nav button{font-size:13px;padding:10px 12px}.walkie-history-nav span{font-size:12px;text-align:center}.voice-history-play{width:100%;background:#b8d8b4!important}.walkie-audio audio{width:100%;margin-top:12px}body.dark .walkie-history{background:#26352f;color:#f2f3ed;border-color:#8d9f91}
