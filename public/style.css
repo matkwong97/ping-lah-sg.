@@ -33,3 +33,15 @@
 .inbox-tile .unread-badge{position:absolute!important;top:12px!important;right:12px!important;left:auto!important;transform:none!important;min-width:25px!important;width:auto!important;height:25px!important;padding:0 7px!important;font-size:12px!important;line-height:1!important;box-shadow:none!important;z-index:2}
 .walkie-history{background:#f7f7f1;border:3px solid #26302d;border-radius:22px;padding:18px;margin:18px 0 24px;color:#26302d}
 .walkie-history-title{font-weight:900;letter-spacing:.4px;margin-bottom:8px}.walkie-history-meta{font-size:14px;min-height:38px}.walkie-history-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0}.walkie-history-nav button{font-size:13px;padding:10px 12px}.walkie-history-nav span{font-size:12px;text-align:center}.voice-history-play{width:100%;background:#b8d8b4!important}.walkie-audio audio{width:100%;margin-top:12px}body.dark .walkie-history{background:#26352f;color:#f2f3ed;border-color:#8d9f91}
+
+/* v19: one-screen send and receive, clean contact selection */
+.recipient-picker{display:block;margin:16px 0 10px;font-weight:800;color:inherit}
+.recipient-picker select{display:block;width:100%;margin-top:9px;min-height:52px;border:2px solid #27332f;border-radius:14px;background:#fff;color:#27332f;padding:10px 12px;font-size:1rem}
+.walkie-device .recipient-picker{margin:20px 0 12px;color:#c2e5c0;text-align:left}
+.walkie-device .recipient-picker select{background:#f8faf5;color:#27332f}
+.walkie-device .walkie-history{margin:18px 0 12px;background:#e6f0df;color:#22342a;border:2px solid #30473a;border-radius:14px;padding:14px}
+.walkie-device .walkie-history button{min-height:44px}
+.walkie-device .walkie-history-meta{overflow-wrap:anywhere}
+.walkie-device .walkie-audio audio{display:block;max-width:100%;margin-top:10px}
+.walkie-send{margin-top:14px}
+@media(max-width:420px){.walkie-device .walkie-history-nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}}
