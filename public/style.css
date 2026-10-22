@@ -84,3 +84,16 @@ body.dark .msn-chat-bottom{background:#293b49;border-color:#536a7d}body.dark .ms
 body.dark .msn-chat-feedback{background:#4b4530;color:#fff1c4;border-color:#887646}body.dark .msn-typing{color:#c5d9e9}
 @keyframes msnFeedback{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.nudge-shake,.msn-chat-feedback{animation:none!important}}
+
+/* v30: one typography standard for all quick-access tiles. */
+.grid>.tile{display:flex;align-items:center;justify-content:flex-start;text-align:left;min-width:0;padding:18px 16px;font-size:clamp(16px,4vw,20px);font-weight:800;line-height:1.25}
+.grid>.tile .tile-label,.grid>.tile>span:first-child{display:block;font-size:inherit;font-weight:inherit;line-height:inherit;overflow-wrap:anywhere}
+.grid>.inbox-tile{padding-right:48px!important}
+.grid>.tile .unread-badge{font-size:12px;font-weight:900;line-height:1}
+/* Pager: retro LCD blinks briefly on first viewing of an unread page. */
+.pager-lcd.pager-new-blink{animation:pager-attention 0.68s steps(2,end) 7;will-change:filter}
+@keyframes pager-attention{0%,100%{filter:brightness(1)}50%{filter:brightness(.40)}}
+/* Messenger: gentle single-message jiggle for newly received messages. */
+.msn-message.new-arrival .msn-message-text{animation:chat-attention .85s ease-in-out 5;transform-origin:bottom left;will-change:transform}
+@keyframes chat-attention{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-4px) rotate(-.45deg)}55%{transform:translateY(1px) rotate(.35deg)}80%{transform:translateY(-2px) rotate(0)}}
+@media(prefers-reduced-motion:reduce){.pager-lcd.pager-new-blink,.msn-message.new-arrival .msn-message-text{animation:none!important;will-change:auto}}
