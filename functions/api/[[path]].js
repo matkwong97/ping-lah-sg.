@@ -104,13 +104,18 @@ export async function onRequest({request,env,params,context}){try{
   return J({ok:outcome.sent>0,...outcome},outcome.sent>0?200:502);
  }
  if(route==='/me'&&method==='GET'){await env.DB.prepare('UPDATE users SET last_seen=? WHERE id=?').bind(now(),me.id).run();return J({me:{...me,last_seen:now()}})}
- if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60),status=String(b.status||me.status||'online'),status_message=String(b.status_message??me.status_message??'').trim().slice(0,120);if(!name||!['online','away','busy','brb','offline'].includes(status))return J({error:'Invalid profile'},400);await env.DB.prepare('UPDATE users SET name=?,status=?,status_message=? WHERE id=?').bind(name,status,status_message,me.id).run();return J({ok:true})}
- if(route==='/messenger/nudges'&&method==='GET'){const r=await env.DB.prepare('SELECT id FROM messenger_nudges WHERE receiver_id=? AND seen_at IS NULL ORDER BY created_at DESC LIMIT 30').bind(me.id).all();const count=r.results.length;if(count)await env.DB.prepare('UPDATE messenger_nudges SET seen_at=? WHERE receiver_id=? AND seen_at IS NULL').bind(now(),me.id).run();return J({count});}
+ if(route==='/me'&&method==='PATCH'){const b=await data();const name=String(b.name||'').trim().slice(0,60),status=String(b.status||me.status||'online'),status_message=String(b.status_message??me.status_message??'').trim().slice(0,120),avatar=String(b.avatar||me.avatar||'🙂');if(!name||!['🙂','😎','🐱','🤖','👾','💾','📼','🎧','🐸','🌈','⭐','🦊'].includes(avatar)||!['online','away','busy','brb','offline'].includes(status))return J({error:'Invalid profile'},400);await env.DB.prepare('UPDATE users SET name=?,status=?,status_message=?,avatar=? WHERE id=?').bind(name,status,status_message,avatar,me.id).run();return J({ok:true})}
+ if(route==='/messenger/nudges'&&method==='GET'){const r=await env.DB.prepare('SELECT id,sender_id FROM messenger_nudges WHERE receiver_id=? AND seen_at IS NULL ORDER BY created_at DESC LIMIT 30').bind(me.id).all();const count=r.results.length;if(count)await env.DB.prepare('UPDATE messenger_nudges SET seen_at=? WHERE receiver_id=? AND seen_at IS NULL').bind(now(),me.id).run();return J({count,nudges:r.results});}
  if(route.startsWith('/messenger/nudge/')&&method==='POST'){const peer=route.split('/')[3];const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);if(await limited('nudge:'+me.id,12,3600000))return J({error:'Too many nudges. Try later.'},429);await env.DB.prepare('INSERT INTO messenger_nudges(id,sender_id,receiver_id,created_at) VALUES(?,?,?,?)').bind(uid(),me.id,peer,now()).run();return J({ok:true});}
  if(route==='/messenger/presence'&&method==='GET'){
   await env.DB.prepare('UPDATE users SET last_seen=? WHERE id=?').bind(now(),me.id).run();
-  const r=await env.DB.prepare('SELECT u.id,u.name,u.status,u.status_message,u.last_seen FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=?').bind(me.id).all();
+  const r=await env.DB.prepare('SELECT u.id,u.name,u.status,u.status_message,u.last_seen,u.avatar FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=?').bind(me.id).all();
   return J({me:{...me,last_seen:now()},friends:r.results.map(x=>x.status==='offline'?{...x,last_seen:0}:x)});
+ }
+ if(route.startsWith('/messenger/typing/')&&['GET','POST'].includes(method)){
+  const peer=route.split('/')[3];const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
+  if(method==='POST'){await env.DB.prepare('INSERT INTO messenger_typing(sender_id,receiver_id,updated_at) VALUES(?,?,?) ON CONFLICT(sender_id,receiver_id) DO UPDATE SET updated_at=excluded.updated_at').bind(me.id,peer,now()).run();return J({ok:true})}
+  const state=await env.DB.prepare('SELECT updated_at FROM messenger_typing WHERE sender_id=? AND receiver_id=?').bind(peer,me.id).first();return J({typing:!!state&&now()-Number(state.updated_at)<5500});
  }
  if(route.startsWith('/messenger/chat/')&&['GET','POST'].includes(method)){
   const peer=route.split('/')[3];if(!peer)return J({error:'Friend required'},400);
