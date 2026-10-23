@@ -152,3 +152,33 @@ body.dark .msn-chat-feedback{background:#4b4530;color:#fff1c4;border-color:#8876
 .devices-retro .radio-tuner #radioDialLabel{color:#f0d5b2;text-shadow:0 1px 2px #3b2217}
 .devices-retro .radio-tuner audio{border-radius:12px;box-shadow:0 2px 5px #39231875}
 @media(max-width:410px){.devices-retro .radio-tuner .radio-speaker{height:60px}.devices-retro .radio-tuner .radio-glass{padding:12px}}
+
+/* v36 — conversation-first bubble layout shared by both appearance modes */
+.msn-chat-window .msn-message{display:flex;flex-direction:column;align-items:flex-start;max-width:100%;margin:0 0 14px;min-width:0}
+.msn-chat-window .msn-message.mine{align-items:flex-end;margin-left:0}
+.msn-chat-window .msn-message-head{max-width:85%;font-size:11px;margin-bottom:5px}
+.msn-chat-window .msn-bubble-line{display:flex;max-width:85%;min-width:0}
+.msn-chat-window .msn-message-text{display:inline-block;width:fit-content;max-width:100%;min-width:0;box-sizing:border-box;line-height:1.4;padding:10px 14px;border-radius:17px 17px 17px 5px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal}
+.msn-chat-window .msn-message.mine .msn-message-text{border-radius:17px 17px 5px 17px}
+.msn-chat-window .msn-message-actions{display:flex;align-items:center;gap:6px;margin-top:4px;max-width:85%;min-height:25px}
+.msn-chat-window .msn-reactions{display:flex;gap:4px;flex-wrap:wrap;margin:0}
+.msn-chat-window .msn-reactions button{min-height:24px;padding:2px 7px;font-size:12px;border-radius:20px}
+.msn-chat-window .msn-react-trigger{min-height:26px;min-width:28px;padding:2px 7px;border-radius:20px;font-size:16px;line-height:1;background:transparent;border:1px solid transparent;color:#6d849a;opacity:.68}
+.msn-chat-window .msn-react-trigger:focus-visible,.msn-chat-window .msn-react-trigger[aria-expanded="true"]{opacity:1;outline:2px solid #83b9e5;outline-offset:1px}
+.msn-chat-window .msn-reaction-picker{display:flex;gap:5px;max-width:85%;padding:6px;margin-top:3px;border-radius:22px;background:#fff;border:1px solid #c6d8e8;box-shadow:0 3px 12px #142b4629}
+.msn-chat-window .msn-reaction-picker[hidden]{display:none!important}
+.msn-chat-window .msn-reaction-picker button{padding:5px;min-width:32px;min-height:32px;border:0;border-radius:50%;background:transparent;font-size:19px;line-height:1}
+.msn-chat-window .msn-reaction-picker button:active{transform:scale(.92)}
+body.dark .msn-chat-window .msn-react-trigger{color:#a7c5df}
+body.dark .msn-chat-window .msn-reaction-picker{background:#2a3e50;border-color:#59758a}
+/* Modern stays clean and understated, with the same compact widths and alignment. */
+body.messenger-modern .msn-chat-window .msn-message-text{box-shadow:none}
+/* Retro: early-2000s glossy chat bubbles, clearly distinct senders. */
+body.messenger-retro .msn-chat-window .msn-message.mine .msn-message-text{color:#fff;background:linear-gradient(155deg,#72c1f5 0%,#428dd3 36%,#2964aa 100%);border:1px solid #82c9f8;box-shadow:inset 0 2px 1px #ffffff70,inset 0 -2px 4px #123c7b44,0 3px 8px #173c683b;text-shadow:0 1px 1px #173a6b55}
+body.messenger-retro .msn-chat-window .msn-message.theirs .msn-message-text{color:#17391c;background:linear-gradient(155deg,#c3eeb3 0%,#89cf7c 38%,#5ca85b 100%);border:1px solid #a5dc95;box-shadow:inset 0 2px 1px #ffffff94,inset 0 -2px 4px #39744435,0 3px 8px #183f2b3b;text-shadow:0 1px 1px #ffffff55}
+body.messenger-retro .msn-chat-window .msn-message-text{position:relative}
+body.messenger-retro .msn-chat-window .msn-message-text:after{content:'';position:absolute;bottom:2px;left:-5px;width:9px;height:12px;background:inherit;border-radius:0 0 0 90%;transform:skewY(-28deg);z-index:-1}
+body.messenger-retro .msn-chat-window .msn-message.mine .msn-message-text:after{left:auto;right:-5px;transform:skewY(28deg);border-radius:0 0 90% 0}
+body.messenger-retro .msn-chat-window .msn-message.new-arrival .msn-message-text{animation:chat-attention .85s ease-in-out 5}
+@media(prefers-reduced-motion:reduce){body.messenger-retro .msn-chat-window .msn-message.new-arrival .msn-message-text{animation:none!important}}
+@media(max-width:380px){.msn-chat-window .msn-bubble-line,.msn-chat-window .msn-message-head,.msn-chat-window .msn-message-actions{max-width:89%}}
