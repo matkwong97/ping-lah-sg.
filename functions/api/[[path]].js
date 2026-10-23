@@ -87,6 +87,34 @@ export async function onRequest({request,env,params,context}){try{
  const token=(request.headers.get('Authorization')||'').replace(/^Bearer /,'');if(!token)return J({error:'Sign in on this device first'},401);const me=await env.DB.prepare('SELECT id,code,name,status,status_message,last_seen,avatar FROM users WHERE token_hash=?').bind(await hash(token)).first();if(!me)return J({error:'Invalid session'},401);
  if(method==='POST'&&['/friends','/messages','/upload'].includes(route)&&await limited('write:'+me.id,90,3600000))return J({error:'Hourly sending limit reached.'},429);
 
+
+ // Pocket Cam temporary private photos; requires MIGRATION-v37.sql.
+ if(route.startsWith('/messenger/photo/')&&['GET','POST'].includes(method)){
+  const id=route.split('/')[3];
+  if(method==='POST'&&route.endsWith('/send'))return J({error:'Invalid photo route'},404);
+  if(method==='POST'&&request.headers.get('content-type')?.includes('application/json')){
+   const peer=id,linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();
+   if(!linked)return J({error:'Not a connected friend'},403);
+   if(await limited('photo:'+me.id,25,86400000))return J({error:'Daily photo limit reached (25)'},429);
+   if(Number(request.headers.get('content-length')||0)>180000)return J({error:'Photo too large'},413);
+   const b=await data(),image=String(b.image||'');
+   if(!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>150000||image.length<100)return J({error:'Invalid or oversized JPEG photo'},400);
+   const bytes=atob(image.split(',')[1]);if(bytes.length>110000||bytes.charCodeAt(0)!==255||bytes.charCodeAt(1)!==216||bytes.charCodeAt(bytes.length-2)!==255||bytes.charCodeAt(bytes.length-1)!==217)return J({error:'Invalid JPEG data'},400);
+   const id2=uid(),sent=now(),max=sent+7*86400000;
+   await env.DB.batch([env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id2,me.id,peer,'[Pocket Cam photo]',sent),env.DB.prepare('INSERT INTO pocket_photos(message_id,image_data,sent_at,max_expires_at) VALUES(?,?,?,?)').bind(id2,image,sent,max)]);
+   return J({ok:true,id:id2});
+  }
+  const photo=await env.DB.prepare('SELECT p.image_data,p.sent_at,p.opened_at,p.max_expires_at,m.sender_id,m.receiver_id FROM pocket_photos p JOIN messenger_messages m ON m.id=p.message_id WHERE p.message_id=?').bind(id).first();
+  if(!photo||![photo.sender_id,photo.receiver_id].includes(me.id))return J({error:'Photo unavailable'},404);
+  const peer=photo.sender_id===me.id?photo.receiver_id:photo.sender_id;
+  const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
+  const expiry=Math.min(photo.max_expires_at,photo.opened_at?photo.opened_at+43200000:photo.max_expires_at);
+  if(now()>=expiry||!photo.image_data)return J({error:'Photo expired'},410);
+  if(method==='GET'&&me.id===photo.receiver_id&&!photo.opened_at)return J({error:'Open the photo first'},403);
+  if(method==='POST'&&me.id===photo.receiver_id&&!photo.opened_at){await env.DB.prepare('UPDATE pocket_photos SET opened_at=? WHERE message_id=? AND opened_at IS NULL').bind(now(),id).run();photo.opened_at=now()}
+  return J({image:photo.image_data,expires_at:Math.min(photo.max_expires_at,photo.opened_at?photo.opened_at+43200000:photo.max_expires_at)});
+ }
+
  if(route==='/push/public-key'&&method==='GET')return J({publicKey:env.VAPID_PUBLIC_KEY||null,configured:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_JWK)});
  if(route==='/push/subscribe'&&method==='POST'){
   if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_JWK)return J({error:'Push is not configured in Cloudflare yet'},503);
@@ -126,9 +154,9 @@ export async function onRequest({request,env,params,context}){try{
    const id=uid();await env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id,me.id,peer,body,now()).run();return J({ok:true,id});
   }
   const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,body,created_at FROM messenger_messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at DESC LIMIT 100').bind(me.id,peer,peer,me.id).all();
-  const ms=r.results.reverse();const ids=ms.map(x=>x.id);let reactions=[];
+  const ms=r.results.reverse();const ids=ms.map(x=>x.id);let reactions=[];let photoMap={};if(ms.some(m=>m.body==='[Pocket Cam photo]')){const pids=ms.filter(m=>m.body==='[Pocket Cam photo]').map(m=>m.id);const pr=await env.DB.prepare('SELECT message_id,opened_at,max_expires_at,image_data FROM pocket_photos WHERE message_id IN ('+pids.map(()=>'?').join(',')+')').bind(...pids).all();photoMap=Object.fromEntries(pr.results.map(p=>[p.message_id,p]));} 
   if(ids.length){const q='SELECT message_id,emoji,COUNT(*) AS n FROM messenger_reactions WHERE message_id IN ('+ids.map(()=>'?').join(',')+') GROUP BY message_id,emoji';reactions=(await env.DB.prepare(q).bind(...ids).all()).results}
-  return J({messages:ms.map(m=>({...m,reactions:Object.fromEntries(reactions.filter(x=>x.message_id===m.id).map(x=>[x.emoji,x.n]))}))});
+  return J({messages:ms.map(m=>({...m,...(m.body==='[Pocket Cam photo]'?{photo_opened_at:photoMap[m.id]?.opened_at||null,photo_expires_at:Math.min(photoMap[m.id]?.max_expires_at||0,photoMap[m.id]?.opened_at?photoMap[m.id].opened_at+43200000:photoMap[m.id]?.max_expires_at||0),photo_expired:!photoMap[m.id]?.image_data||now()>=Math.min(photoMap[m.id]?.max_expires_at||0,photoMap[m.id]?.opened_at?photoMap[m.id].opened_at+43200000:photoMap[m.id]?.max_expires_at||0)}:{}),reactions:Object.fromEntries(reactions.filter(x=>x.message_id===m.id).map(x=>[x.emoji,x.n]))}))});
  }
  if(route.startsWith('/messenger/react/')&&method==='POST'){
   const id=route.split('/')[3],b=await data(),emoji=String(b.emoji||'');if(!['❤️','😂','👍','😮','😢'].includes(emoji))return J({error:'Unsupported reaction'},400);
