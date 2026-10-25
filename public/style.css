@@ -212,3 +212,34 @@ body.messenger-retro .msn-chat-window .msn-message.new-arrival .msn-message-text
 .pocket-modern{border:1px solid color-mix(in srgb,var(--cam-metal),white 32%);background:linear-gradient(135deg,color-mix(in srgb,var(--cam-metal),#202735 65%),#111b29 78%);box-shadow:inset 0 1px 0 #ffffff32,0 12px 25px #0005}
 .pocket-modern .pocket-snap{border-color:color-mix(in srgb,var(--cam-metal),white 35%)}
 @media(max-width:440px){.pocket-classic{border-radius:21px}.pocket-classic:before{border-radius:16px}}
+
+
+/* v41/v13 voice + video calls */
+.ping-call-backdrop{position:fixed;inset:0;z-index:99999;background:#071324c9;display:grid;place-items:center;padding:16px;backdrop-filter:blur(10px)}
+.ping-call-card{width:min(100%,430px);max-height:95dvh;overflow:auto;text-align:center;padding:24px 18px;border-radius:24px;color:#fff;background:linear-gradient(155deg,#273a58,#101727 75%);box-shadow:0 20px 70px #0009;border:1px solid #ffffff38}
+.ping-call-classic .ping-call-card{background:linear-gradient(140deg,#effbff,#a8cce6 55%,#6498c2);color:#13314a;border:4px ridge #d8f3ff;border-radius:12px}
+.ping-call-brand{font-weight:800;letter-spacing:.13em;font-size:12px}.ping-call-avatar{font-size:58px;margin:18px auto}.ping-call-card h2{margin:8px}.ping-call-card p{min-height:24px}.ping-call-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:20px 0}.ping-call-actions button{border:1px solid #ffffff6b;border-radius:40px;padding:12px 15px;background:#496481;color:white;font-weight:700;min-height:48px}.ping-call-actions .ping-accept{background:#13895c}.ping-call-actions .ping-end{background:#c82c45}.ping-call-videos{position:relative;aspect-ratio:4/5;background:#070d17;border-radius:14px;overflow:hidden;margin:12px auto;max-height:55dvh}.ping-call-videos[hidden]{display:none}.ping-call-videos video:first-child{width:100%;height:100%;object-fit:cover}.ping-call-videos video:last-child{position:absolute;right:10px;bottom:10px;width:28%;height:27%;object-fit:cover;border:2px solid white;border-radius:10px;background:#333}.ping-call-card small{opacity:.75}.ping-chat-call{display:flex;gap:5px;flex-wrap:wrap}.ping-chat-call button{font-size:12px;padding:8px;border-radius:20px;border:1px solid #87aac3;background:#eaf5ff;color:#173852;font-weight:700}
+
+/* Calling polish — shared design system; Classic and Modern retain feature parity */
+.ping-call-backdrop{padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));animation:ping-call-appear .2s ease-out}
+@keyframes ping-call-appear{from{opacity:0}to{opacity:1}}
+.ping-call-card{position:relative;isolation:isolate;box-sizing:border-box;width:min(100%,460px);padding:clamp(20px,5vw,34px) 18px 22px;box-shadow:0 25px 90px #000b, inset 0 1px #ffffff55;background:radial-gradient(ellipse at 50% -20%,#5575aa 0%,transparent 55%),linear-gradient(165deg,#1c3151,#0b1222 80%);border:1px solid #91b6e85c;overflow:auto}
+.ping-call-card::before{content:'';position:absolute;inset:1px;pointer-events:none;border-radius:inherit;border:1px solid #ffffff18}
+.ping-call-brand{color:#bad8ff;font-size:11px;letter-spacing:.19em}
+.ping-call-ornament{width:92px;height:92px;margin:22px auto 14px;border-radius:50%;display:grid;place-items:center;font-size:40px;color:white;background:linear-gradient(145deg,#8bb4ec,#2d578a 42%,#0a2141);box-shadow:inset 0 2px 3px #ffffff90,inset 0 -7px 14px #06142c,0 14px 30px #0007,0 0 0 5px #ffffff10}
+.ping-call-card h2{font-size:clamp(24px,7vw,31px);line-height:1.2;overflow-wrap:anywhere}
+.ping-call-card #ping-call-status{font-size:15px;font-weight:600;color:#d8eaff;margin:12px 0 2px}
+.ping-call-time{font-variant-numeric:tabular-nums;font-size:13px;letter-spacing:.08em;opacity:.8;margin:4px 0 8px}
+.ping-call-actions{gap:12px;margin:22px 0 16px}
+.ping-call-actions button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:70px;min-height:70px;padding:11px 12px;border-radius:18px;background:linear-gradient(160deg,#627b9c,#2c3d56);border:1px solid #ffffff57;box-shadow:inset 0 1px #ffffff66,0 7px 15px #0005;font-size:22px;transition:transform .12s,filter .12s;touch-action:manipulation}
+.ping-call-actions button:active{transform:scale(.94)}.ping-call-actions button span{font-size:11px;letter-spacing:.02em}
+.ping-call-actions .ping-accept{background:linear-gradient(160deg,#42d2a2,#078254)}.ping-call-actions .ping-end{background:linear-gradient(160deg,#fa7382,#b52342)}
+.ping-call-videos{border:2px solid #a7b9d744;box-shadow:0 14px 32px #0007,inset 0 0 20px #0008}
+.ping-call-video-label{position:absolute;left:12px;top:12px;padding:5px 9px;border-radius:20px;background:#101a2ba8;color:#fff;font-size:10px;letter-spacing:.09em;pointer-events:none}
+.ping-call-videos video:last-of-type{bottom:12px;right:12px;border:2px solid #ffffffc9;box-shadow:0 7px 20px #0009}
+.ping-call-classic .ping-call-card{background:linear-gradient(155deg,#f7fdff,#b9d9f2 55%,#77a6d0);border:3px ridge #f4fdff;box-shadow:inset 0 2px #fff,0 25px 70px #0009}
+.ping-call-classic .ping-call-brand{color:#28577c}.ping-call-classic .ping-call-ornament{background:linear-gradient(145deg,#e4faff,#5694c5 55%,#164b83);box-shadow:inset 0 3px 4px #fff,inset 0 -8px 10px #184a78,0 8px 15px #47759a77,0 0 0 5px #ffffff7a}
+.ping-call-classic .ping-call-card #ping-call-status{color:#214d6c}.ping-call-classic .ping-call-actions button{background:linear-gradient(#f9feff,#8bb3d7);color:#183b5a;border:1px solid #638fb3;box-shadow:inset 0 2px #fff,0 5px 10px #3a69845c}
+.ping-call-classic .ping-call-actions .ping-accept{background:linear-gradient(#a4f6c8,#2ba872);color:#0b4632}.ping-call-classic .ping-call-actions .ping-end{background:linear-gradient(#ffbac0,#e45b72);color:#631324}
+@media(max-width:360px){.ping-call-actions{gap:6px}.ping-call-actions button{min-width:62px;min-height:64px;padding:8px}.ping-call-card{padding-inline:12px}}
+@media(prefers-reduced-motion:reduce){.ping-call-backdrop{animation:none}.ping-call-actions button{transition:none}}
