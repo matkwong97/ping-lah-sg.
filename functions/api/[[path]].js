@@ -54,6 +54,15 @@ async function pNotify(env,recipient,payload){
  return {devices:settled.length,sent:settled.filter(x=>x.status==='fulfilled'&&x.value==='sent').length,expired:settled.filter(x=>x.status==='fulfilled'&&x.value==='expired').length,failed:errors.length,errors};
 }
 
+async function tgNotify(env,recipient,kind,sender){
+ if(!env.TELEGRAM_BOT_TOKEN)return;
+ const link=await env.DB.prepare('SELECT chat_id FROM telegram_links WHERE user_id=?').bind(recipient).first();if(!link)return;
+ const label={page:'📟 Pager',voice:'🎙️ Walkie-Talkie',messenger:'💬 Messenger'}[kind]||'Ping';
+ const url=(env.PING_PUBLIC_URL||'https://ping-lah-sg-personal.pages.dev/');
+ const text='🔔 Ping Lah! SG · '+label+'\nFrom: '+sender+'\nOpen Ping Lah! to respond.';
+ const response=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:link.chat_id,text,reply_markup:{inline_keyboard:[[{text:'Open Ping Lah!',url}]]}})});
+ if(!response.ok)console.error('Telegram bridge HTTP',response.status);
+}
 const J=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const hash=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const uid=()=>crypto.randomUUID();const now=()=>Date.now();const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const code=()=>Array.from(crypto.getRandomValues(new Uint8Array(8))).map(x=>alphabet[x%alphabet.length]).join('');
@@ -81,10 +90,33 @@ export async function onRequest({request,env,params,context}){try{
  const route='/'+(params.path||[]).join('/');const method=request.method;const data=async()=>{try{return await request.json()}catch{return {}}};
  const ip=request.headers.get('CF-Connecting-IP')||'unknown';
  const limited=async(key,max,windowMs)=>{const slot=Math.floor(now()/windowMs),k=key+':'+slot;await env.DB.prepare('INSERT INTO rate_limits(k,n,expires_at) VALUES(?,1,?) ON CONFLICT(k) DO UPDATE SET n=n+1').bind(k,slot*windowMs+windowMs).run();const row=await env.DB.prepare('SELECT n FROM rate_limits WHERE k=?').bind(k).first();return row.n>max};
+ if(route==='/telegram/webhook'&&method==='POST'){
+  if(!env.TELEGRAM_WEBHOOK_SECRET||request.headers.get('X-Telegram-Bot-Api-Secret-Token')!==env.TELEGRAM_WEBHOOK_SECRET)return J({error:'Forbidden'},403);
+  const update=await data(),chat=update.message?.chat,text=String(update.message?.text||'');
+  if(chat?.type==='private'&&text.startsWith('/start ')){
+   const link=text.slice(7).trim();if(/^[a-f0-9]{64}$/.test(link)){
+    const row=await env.DB.prepare('SELECT user_id FROM telegram_link_tokens WHERE token_hash=? AND expires_at>?').bind(await hash(link),now()).first();
+    if(row){await env.DB.prepare('INSERT INTO telegram_links(user_id,chat_id,created_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET chat_id=excluded.chat_id,created_at=excluded.created_at').bind(row.user_id,String(chat.id),now()).run();await env.DB.prepare('DELETE FROM telegram_link_tokens WHERE user_id=?').bind(row.user_id).run();if(env.TELEGRAM_BOT_TOKEN)await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat.id,text:'✅ Ping Lah! Smart Pager connected. You will receive Messenger, Pager and Walkie-Talkie alerts here.'})});}
+   }
+  }
+  return J({ok:true});
+ }
  if(route==='/recover'&&method==='POST'){if(await limited('recover:'+ip,8,3600000))return J({error:'Too many attempts. Try again later.'},429);const b=await data();const recovery=String(b.recovery||'').replace(/\s+/g,'').toUpperCase();if(recovery.length<20)return J({error:'Invalid recovery code'},400);const user=await env.DB.prepare('SELECT id,code,name FROM users WHERE recovery_hash=?').bind(await hash(recovery)).first();if(!user)return J({error:'Recovery code not found'},404);const newToken=uid()+uid(),newRecovery=Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();await env.DB.prepare('UPDATE users SET token_hash=?,recovery_hash=? WHERE id=?').bind(await hash(newToken),await hash(newRecovery),user.id).run();return J({token:newToken,recovery:newRecovery,me:user})}
  
  if(route==='/register'&&method==='POST'){if(await limited('register:'+ip,5,3600000))return J({error:'Too many registrations. Try again later.'},429);const b=await data(),name=String(b.name||'').trim().slice(0,60);if(!name)return J({error:'Enter a display name'},400);const token=uid()+uid();const recovery=Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();const id=uid();let c;for(let i=0;i<8;i++){c=code();try{await env.DB.prepare('INSERT INTO users(id,code,name,token_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?)').bind(id,c,name,await hash(token),await hash(recovery),now()).run();return J({token,recovery,me:{id,code:c,name}})}catch(e){if(!String(e).includes('UNIQUE'))throw e}}return J({error:'Please retry'},503)}
  const token=(request.headers.get('Authorization')||'').replace(/^Bearer /,'');if(!token)return J({error:'Sign in on this device first'},401);const me=await env.DB.prepare('SELECT id,code,name,status,status_message,last_seen,avatar FROM users WHERE token_hash=?').bind(await hash(token)).first();if(!me)return J({error:'Invalid session'},401);
+ if(route==='/telegram/status'&&method==='GET'){const row=await env.DB.prepare('SELECT 1 FROM telegram_links WHERE user_id=?').bind(me.id).first();return J({linked:!!row})}
+ if(route==='/telegram/link'&&method==='POST'){
+  if(!env.TELEGRAM_BOT_USERNAME||!env.TELEGRAM_BOT_TOKEN)return J({error:'Telegram bot is not configured'},503);
+  const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,'0')).join('');
+  await env.DB.prepare('INSERT INTO telegram_link_tokens(user_id,token_hash,expires_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash,expires_at=excluded.expires_at').bind(me.id,await hash(token),now()+600000).run();
+  return J({url:'https://t.me/'+env.TELEGRAM_BOT_USERNAME.replace(/^@/,'')+'?start='+token});
+ }
+ if(route==='/telegram/unlink'&&method==='POST'){await env.DB.prepare('DELETE FROM telegram_links WHERE user_id=?').bind(me.id).run();await env.DB.prepare('DELETE FROM telegram_link_tokens WHERE user_id=?').bind(me.id).run();return J({ok:true})}
+ if(route.startsWith('/messenger/read/')&&method==='POST'){
+  const peer=route.split('/')[3];const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
+  await env.DB.prepare('INSERT INTO messenger_read_cursors(user_id,peer_id,read_at) VALUES(?,?,?) ON CONFLICT(user_id,peer_id) DO UPDATE SET read_at=excluded.read_at').bind(me.id,peer,now()).run();return J({ok:true});
+ }
  if(method==='POST'&&['/friends','/messages','/upload'].includes(route)&&await limited('write:'+me.id,90,3600000))return J({error:'Hourly sending limit reached.'},429);
 
 
@@ -138,7 +170,7 @@ export async function onRequest({request,env,params,context}){try{
  if(route==='/messenger/presence'&&method==='GET'){
   await env.DB.prepare('UPDATE users SET last_seen=? WHERE id=?').bind(now(),me.id).run();
   const r=await env.DB.prepare('SELECT u.id,u.name,u.status,u.status_message,u.last_seen,u.avatar FROM friends f JOIN users u ON u.id=f.friend_id WHERE f.user_id=?').bind(me.id).all();
-  return J({me:{...me,last_seen:now()},friends:r.results.map(x=>x.status==='offline'?{...x,last_seen:0}:x)});
+  const ur=await env.DB.prepare('SELECT m.sender_id AS peer_id,COUNT(*) AS n FROM messenger_messages m LEFT JOIN messenger_read_cursors c ON c.user_id=m.receiver_id AND c.peer_id=m.sender_id WHERE m.receiver_id=? AND m.created_at>COALESCE(c.read_at,0) GROUP BY m.sender_id').bind(me.id).all();return J({unread:Object.fromEntries(ur.results.map(x=>[x.peer_id,x.n])),me:{...me,last_seen:now()},friends:r.results.map(x=>x.status==='offline'?{...x,last_seen:0}:x)});
  }
  if(route.startsWith('/messenger/typing/')&&['GET','POST'].includes(method)){
   const peer=route.split('/')[3];const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first();if(!linked)return J({error:'Not a connected friend'},403);
@@ -154,10 +186,12 @@ export async function onRequest({request,env,params,context}){try{
    const id=uid();await env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id,me.id,peer,body,now()).run();
    const preview=body==='[Pocket Cam photo]'?'Sent you a Pocket Cam photo':body.slice(0,110);
    const alert={title:'Ping Lah! SG · Messenger',body:me.name+': '+preview,url:'/?open=messenger&friend='+encodeURIComponent(me.id),tag:'ping-messenger-'+id};
+   const telegramJob=tgNotify(env,peer,'messenger',me.name).catch(e=>console.error('Telegram:',e));if(context?.waitUntil)context.waitUntil(telegramJob);else await telegramJob;
    const pushJob=pNotify(env,peer,alert).catch(e=>console.error('Messenger push:',e));
    if(context?.waitUntil)context.waitUntil(pushJob);else await pushJob;
    return J({ok:true,id});
   }
+  await env.DB.prepare('INSERT INTO messenger_read_cursors(user_id,peer_id,read_at) VALUES(?,?,?) ON CONFLICT(user_id,peer_id) DO UPDATE SET read_at=excluded.read_at').bind(me.id,peer,now()).run();
   const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,body,created_at FROM messenger_messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at DESC LIMIT 100').bind(me.id,peer,peer,me.id).all();
   const ms=r.results.reverse();const ids=ms.map(x=>x.id);let reactions=[];let photoMap={};if(ms.some(m=>m.body==='[Pocket Cam photo]')){const pids=ms.filter(m=>m.body==='[Pocket Cam photo]').map(m=>m.id);const pr=await env.DB.prepare('SELECT message_id,opened_at,max_expires_at,image_data FROM pocket_photos WHERE message_id IN ('+pids.map(()=>'?').join(',')+')').bind(...pids).all();photoMap=Object.fromEntries(pr.results.map(p=>[p.message_id,p]));} 
   if(ids.length){const q='SELECT message_id,emoji,COUNT(*) AS n FROM messenger_reactions WHERE message_id IN ('+ids.map(()=>'?').join(',')+') GROUP BY message_id,emoji';reactions=(await env.DB.prepare(q).bind(...ids).all()).results}
@@ -178,6 +212,7 @@ export async function onRequest({request,env,params,context}){try{
  if(route==='/messages'&&method==='GET'){await clean(env);const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,kind,body,created_at,expires_at,read_at FROM messages WHERE sender_id=? OR receiver_id=? ORDER BY created_at DESC LIMIT 150').bind(me.id,me.id).all();return J({messages:r.results})}
  if(route==='/messages'&&method==='POST'){const b=await data(),to=String(b.to||''),kind=String(b.kind||'');if(!['page','voice'].includes(kind))return J({error:'Invalid type'},400);const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,to).first();if(!linked)return J({error:'Not a connected friend'},403);let body=null,key=null;const t=now(),id=uid();if(kind==='page'){body=String(b.body||'').trim().slice(0,200);if(!body)return J({error:'Choose a message'},400)}else{key=String(b.key||'');if(!key.startsWith(me.id+'/')||!(/\.(webm|mp4|ogg)$/.test(key)))return J({error:'Upload audio first'},400);if(!await env.DB.prepare('SELECT 1 FROM voice_blobs WHERE id=? AND owner_id=?').bind(key,me.id).first())return J({error:'Recording not found'},400)}await env.DB.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,NULL)').bind(id,me.id,to,kind,body,key,t,t+(kind==='page'?7:1)*86400000).run();
  const alert={title:kind==='page'?'Ping Lah! SG · Pager':'Ping Lah! SG · Walkie-Talkie',body:kind==='page'?me.name+' paged you: '+body:me.name+' sent you a voice transmission',url:kind==='page'?'/?open=pager&friend='+encodeURIComponent(me.id):'/?open=walkie&friend='+encodeURIComponent(me.id),tag:'ping-'+id};
+ const tgJob=tgNotify(env,to,kind,me.name).catch(e=>console.error('Telegram:',e));if(context?.waitUntil)context.waitUntil(tgJob);else await tgJob;
  const job=pNotify(env,to,alert).catch(e=>console.error('Push delivery:',e));
  if(context?.waitUntil)context.waitUntil(job);else await job;
  return J({ok:true,id})}
