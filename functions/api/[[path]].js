@@ -88,6 +88,39 @@ export async function onRequest({request,env,params,context}){try{
  if(method==='POST'&&['/friends','/messages','/upload'].includes(route)&&await limited('write:'+me.id,90,3600000))return J({error:'Hourly sending limit reached.'},429);
 
 
+
+ // v41/v13: authenticated one-to-one calling signaling (media is WebRTC, not stored in D1).
+ if(route==='/calls/config'&&method==='GET'){
+  let ice=[{urls:'stun:stun.l.google.com:19302'}];
+  if(env.TURN_URLS&&env.TURN_USERNAME&&env.TURN_CREDENTIAL){ice.push({urls:env.TURN_URLS.split(',').map(s=>s.trim()).filter(Boolean),username:env.TURN_USERNAME,credential:env.TURN_CREDENTIAL})}
+  return J({iceServers:ice,turnConfigured:!!env.TURN_URLS});
+ }
+ if(route==='/calls/poll'&&method==='GET'){
+  const rows=await env.DB.prepare("SELECT id,caller_id,callee_id,mode,status,offer_sdp,answer_sdp,created_at,updated_at FROM calls WHERE (caller_id=? OR callee_id=?) AND updated_at>? ORDER BY created_at DESC LIMIT 8").bind(me.id,me.id,now()-180000).all();
+  return J({calls:(rows.results||[]).map(c=>({...c,offer_sdp:c.callee_id===me.id?c.offer_sdp:null,answer_sdp:c.caller_id===me.id?c.answer_sdp:null}))});
+ }
+ if(route==='/calls/start'&&method==='POST'){
+  if(await limited('call-start:'+me.id,20,3600000))return J({error:'Too many call attempts'},429);
+  const b=await data(),peer=String(b.to||''),mode=b.mode==='video'?'video':'voice',sdp=String(b.offer||'');
+  if(!peer||sdp.length>250000||!sdp.includes('v=0'))return J({error:'Invalid call offer'},400);
+  if(!await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,peer).first())return J({error:'Only friends can call'},403);
+  const existing=await env.DB.prepare("SELECT 1 FROM calls WHERE (caller_id=? OR callee_id=? OR caller_id=? OR callee_id=?) AND status IN ('ringing','connected') AND updated_at>?").bind(me.id,me.id,peer,peer,now()-90000).first();
+  if(existing)return J({error:'One of you is already on a call'},409);
+  const id=uid(),t=now();await env.DB.prepare("INSERT INTO calls(id,caller_id,callee_id,mode,status,offer_sdp,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind(id,me.id,peer,mode,'ringing',sdp,t,t).run();return J({id});
+ }
+ if(route.startsWith('/calls/')&&method==='POST'){
+  const parts=route.split('/'),id=parts[2],action=parts[3];if(!['answer','end','decline','heartbeat'].includes(action))return J({error:'Unknown call action'},404);
+  const c=await env.DB.prepare('SELECT * FROM calls WHERE id=?').bind(id).first();if(!c||![c.caller_id,c.callee_id].includes(me.id))return J({error:'Call unavailable'},404);
+  if(action==='answer'){
+   if(c.callee_id!==me.id||c.status!=='ringing'||now()-c.created_at>60000)return J({error:'Call no longer ringing'},409);
+   const b=await data(),sdp=String(b.answer||'');if(sdp.length>250000||!sdp.includes('v=0'))return J({error:'Invalid answer'},400);
+   await env.DB.prepare("UPDATE calls SET status='connected',answer_sdp=?,updated_at=? WHERE id=? AND status='ringing'").bind(sdp,now(),id).run();return J({ok:true});
+  }
+  if(action==='heartbeat'){if(c.status==='connected')await env.DB.prepare('UPDATE calls SET updated_at=? WHERE id=?').bind(now(),id).run();return J({ok:true})}
+  if(action==='decline'&&c.callee_id!==me.id)return J({error:'Not allowed'},403);
+  await env.DB.prepare("UPDATE calls SET status=?,updated_at=? WHERE id=? AND status IN ('ringing','connected')").bind(action==='decline'?'declined':'ended',now(),id).run();return J({ok:true});
+ }
+
  // Pocket Cam temporary private photos; requires MIGRATION-v37.sql.
  if(route.startsWith('/messenger/photo/')&&['GET','POST'].includes(method)){
   const id=route.split('/')[3];
