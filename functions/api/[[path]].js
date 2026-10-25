@@ -91,9 +91,46 @@ export async function onRequest({request,env,params,context}){try{
 
  // v41/v13: authenticated one-to-one calling signaling (media is WebRTC, not stored in D1).
  if(route==='/calls/config'&&method==='GET'){
-  let ice=[{urls:'stun:stun.l.google.com:19302'}];
-  if(env.TURN_URLS&&env.TURN_USERNAME&&env.TURN_CREDENTIAL){ice.push({urls:env.TURN_URLS.split(',').map(s=>s.trim()).filter(Boolean),username:env.TURN_USERNAME,credential:env.TURN_CREDENTIAL})}
-  return J({iceServers:ice,turnConfigured:!!env.TURN_URLS});
+  const fallback=[{urls:'stun:stun.cloudflare.com:3478'}];
+  // Cloudflare Realtime TURN key remains server-side; issue expiring browser credentials.
+  if(!env.REALTIME_TURN_TOKEN_ID||!env.REALTIME_TURN_TOKEN_SECRET){
+   return J({iceServers:fallback,turnConfigured:false});
+  }
+  try{
+   const response=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(env.REALTIME_TURN_TOKEN_ID)+'/credentials/generate-ice-servers',{
+    method:'POST',headers:{Authorization:'Bearer '+env.REALTIME_TURN_TOKEN_SECRET,'Content-Type':'application/json'},body:JSON.stringify({ttl:14400})
+   });
+   if(!response.ok){console.error('TURN credential request failed',response.status);return J({error:'Calling relay is temporarily unavailable'},503)}
+   const result=await response.json();
+   if(!Array.isArray(result.iceServers)||!result.iceServers.length)return J({error:'Invalid calling relay configuration'},503);
+   const iceServers=result.iceServers.map(server=>({...server,urls:(Array.isArray(server.urls)?server.urls:[server.urls]).filter(url=>typeof url==='string'&&!/:(?:53)(?:\?|$)/.test(url))})).filter(server=>server.urls.length);
+   return J({iceServers,turnConfigured:iceServers.some(server=>server.urls.some(url=>url.startsWith('turn')))});
+  }catch(error){console.error('TURN credentials unavailable',String(error));return J({error:'Calling relay is temporarily unavailable'},503)}
+ }
+ // Trickle ICE: candidates are scoped to authenticated call participants.
+ if(route.startsWith('/calls/') && route.endsWith('/candidates')){
+  const id=route.split('/')[2];
+  const c=await env.DB.prepare('SELECT caller_id,callee_id,status FROM calls WHERE id=?').bind(id).first();
+  if(!c||![c.caller_id,c.callee_id].includes(me.id))return J({error:'Call unavailable'},404);
+  if(method==='POST'){
+   if(!['ringing','connected'].includes(c.status))return J({error:'Call ended'},409);
+   const b=await data();const items=Array.isArray(b.candidates)?b.candidates:[];
+   if(items.length>30)return J({error:'Too many ICE candidates'},400);
+   const statements=[];
+   for(const item of items){const candidate=String(item?.candidate||'');
+    if(!candidate||candidate.length>4096)continue;
+    const mid=item.sdpMid==null?null:String(item.sdpMid).slice(0,32);
+    const line=Number.isInteger(item.sdpMLineIndex)&&item.sdpMLineIndex>=0&&item.sdpMLineIndex<16?item.sdpMLineIndex:null;
+    statements.push(env.DB.prepare('INSERT OR IGNORE INTO call_ice_candidates(id,call_id,sender_id,candidate,sdp_mid,sdp_mline,created_at) VALUES(?,?,?,?,?,?,?)').bind(String(item.id||uid()).slice(0,80),id,me.id,candidate,mid,line,now()));
+   }
+   if(statements.length)await env.DB.batch(statements);
+   return J({ok:true});
+  }
+  if(method==='GET'){
+   const after=Math.max(0,Number(new URL(request.url).searchParams.get('after')||0)||0);
+   const rows=await env.DB.prepare('SELECT seq,candidate,sdp_mid,sdp_mline FROM call_ice_candidates WHERE call_id=? AND sender_id!=? AND seq>? ORDER BY seq ASC LIMIT 100').bind(id,me.id,after).all();
+   return J({candidates:(rows.results||[]).map(x=>({seq:x.seq,candidate:x.candidate,sdpMid:x.sdp_mid,sdpMLineIndex:x.sdp_mline}))});
+  }
  }
  if(route==='/calls/poll'&&method==='GET'){
   const rows=await env.DB.prepare("SELECT id,caller_id,callee_id,mode,status,offer_sdp,answer_sdp,created_at,updated_at FROM calls WHERE (caller_id=? OR callee_id=?) AND updated_at>? ORDER BY created_at DESC LIMIT 8").bind(me.id,me.id,now()-180000).all();
