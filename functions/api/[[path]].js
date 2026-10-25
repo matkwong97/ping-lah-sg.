@@ -151,7 +151,12 @@ export async function onRequest({request,env,params,context}){try{
   if(method==='POST'){
    if(await limited('chat:'+me.id,120,3600000))return J({error:'Message limit reached. Try again later.'},429);
    const b=await data(),body=String(b.body||'').trim();if(!body||body.length>1000)return J({error:'Enter a message (maximum 1000 characters)'},400);
-   const id=uid();await env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id,me.id,peer,body,now()).run();return J({ok:true,id});
+   const id=uid();await env.DB.prepare('INSERT INTO messenger_messages(id,sender_id,receiver_id,body,created_at) VALUES(?,?,?,?,?)').bind(id,me.id,peer,body,now()).run();
+   const preview=body==='[Pocket Cam photo]'?'Sent you a Pocket Cam photo':body.slice(0,110);
+   const alert={title:'Ping Lah! SG · Messenger',body:me.name+': '+preview,url:'/?open=messenger&friend='+encodeURIComponent(me.id),tag:'ping-messenger-'+id};
+   const pushJob=pNotify(env,peer,alert).catch(e=>console.error('Messenger push:',e));
+   if(context?.waitUntil)context.waitUntil(pushJob);else await pushJob;
+   return J({ok:true,id});
   }
   const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,body,created_at FROM messenger_messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at DESC LIMIT 100').bind(me.id,peer,peer,me.id).all();
   const ms=r.results.reverse();const ids=ms.map(x=>x.id);let reactions=[];let photoMap={};if(ms.some(m=>m.body==='[Pocket Cam photo]')){const pids=ms.filter(m=>m.body==='[Pocket Cam photo]').map(m=>m.id);const pr=await env.DB.prepare('SELECT message_id,opened_at,max_expires_at,image_data FROM pocket_photos WHERE message_id IN ('+pids.map(()=>'?').join(',')+')').bind(...pids).all();photoMap=Object.fromEntries(pr.results.map(p=>[p.message_id,p]));} 
@@ -172,7 +177,7 @@ export async function onRequest({request,env,params,context}){try{
  if(route.startsWith('/friends/')&&method==='DELETE'){const fid=route.split('/')[2];await env.DB.batch([env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,fid),env.DB.prepare('DELETE FROM friends WHERE user_id=? AND friend_id=?').bind(fid,me.id)]);return J({ok:true})}
  if(route==='/messages'&&method==='GET'){await clean(env);const r=await env.DB.prepare('SELECT id,sender_id,receiver_id,kind,body,created_at,expires_at,read_at FROM messages WHERE sender_id=? OR receiver_id=? ORDER BY created_at DESC LIMIT 150').bind(me.id,me.id).all();return J({messages:r.results})}
  if(route==='/messages'&&method==='POST'){const b=await data(),to=String(b.to||''),kind=String(b.kind||'');if(!['page','voice'].includes(kind))return J({error:'Invalid type'},400);const linked=await env.DB.prepare('SELECT 1 FROM friends WHERE user_id=? AND friend_id=?').bind(me.id,to).first();if(!linked)return J({error:'Not a connected friend'},403);let body=null,key=null;const t=now(),id=uid();if(kind==='page'){body=String(b.body||'').trim().slice(0,200);if(!body)return J({error:'Choose a message'},400)}else{key=String(b.key||'');if(!key.startsWith(me.id+'/')||!(/\.(webm|mp4|ogg)$/.test(key)))return J({error:'Upload audio first'},400);if(!await env.DB.prepare('SELECT 1 FROM voice_blobs WHERE id=? AND owner_id=?').bind(key,me.id).first())return J({error:'Recording not found'},400)}await env.DB.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,NULL)').bind(id,me.id,to,kind,body,key,t,t+(kind==='page'?7:1)*86400000).run();
- const alert={title:kind==='page'?'📟 New page from '+me.name:'🎙️ Voice message from '+me.name,body:kind==='page'?body:'You have a new walkie-talkie recording.',url:kind==='page'?'/?open=pager':'/?open=walkie',tag:'ping-'+id};
+ const alert={title:kind==='page'?'Ping Lah! SG · Pager':'Ping Lah! SG · Walkie-Talkie',body:kind==='page'?me.name+' paged you: '+body:me.name+' sent you a voice transmission',url:kind==='page'?'/?open=pager&friend='+encodeURIComponent(me.id):'/?open=walkie&friend='+encodeURIComponent(me.id),tag:'ping-'+id};
  const job=pNotify(env,to,alert).catch(e=>console.error('Push delivery:',e));
  if(context?.waitUntil)context.waitUntil(job);else await job;
  return J({ok:true,id})}
