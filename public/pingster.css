@@ -13,3 +13,29 @@
 
 /* Mobile comment composer: prevent the Send label from wrapping */
 .commentform{display:flex;align-items:stretch;gap:8px;min-width:0;width:100%}.commentform input{flex:1 1 auto;width:0;min-width:0;margin:0}.commentform button{flex:0 0 auto;min-width:72px;padding:10px 14px;white-space:nowrap;word-break:normal;overflow-wrap:normal;display:inline-flex;align-items:center;justify-content:center;line-height:1.2}@media(max-width:360px){.commentform{gap:6px}.commentform button{min-width:64px;padding:10px 11px}}
+
+/* Pingster polish: screen-centered identity, adaptive appearance, relaxed mobile rhythm */
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;min-height:64px;gap:8px;padding:10px max(14px,calc((100vw - 720px)/2));}
+.top .brand{grid-column:1;justify-self:start;white-space:nowrap;min-width:0;font-size:clamp(12px,3.4vw,15px);}
+.top .top-logo{grid-column:2;justify-self:center;white-space:nowrap;font-size:clamp(21px,5.5vw,26px);line-height:1.1;letter-spacing:-.9px;}
+.top .bell{grid-column:3;justify-self:end;min-width:44px;min-height:44px;}
+.tabs{top:64px;justify-content:space-between;gap:6px;padding:9px max(10px,calc((100vw - 720px)/2));}
+.tabs button{flex:1 1 0;min-width:0;max-width:none;padding:10px 5px;min-height:44px;border-radius:11px;font-size:clamp(11px,2.9vw,14px);font-weight:650;}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 7px #00000012;}
+main{padding-top:14px;padding-bottom:max(42px,env(safe-area-inset-bottom));}
+.card{border-radius:14px;padding:16px;box-shadow:0 2px 10px #15283b09;}
+.space-post{padding:16px;}
+.space-intro{padding:14px 16px;margin-bottom:12px}.space-intro h1{font-size:20px;margin:0 0 3px}.space-intro p{font-size:13px;margin:0;line-height:1.35}
+.space-person{margin-bottom:8px;}
+.space-post>p{line-height:1.5;margin:12px 0;}
+.postphoto{border-radius:12px;max-height:460px;}
+.actions{gap:8px;margin-top:12px;}
+.actions button{min-height:42px;border-radius:11px;}
+.post .actions button{font-weight:650;}
+button{transition:background-color .15s ease,border-color .15s ease;}
+button:active{transform:scale(.985);}
+/* Theme accents remain decorative; the main Ping Lah! light/dark choice controls surfaces. */
+body.night.style-friendster,body.night.style-friendster.colour-purple,body.night.style-friendster.colour-mint,body.night.style-friendster.colour-orange,body.night.style-friendster.colour-blue{--bg:#151c2a;--card:#202c3d;--ink:#f0f5ff;--muted:#b6c4d5;--border:#40536b;}
+body.night.style-classic{--bg:#111c29;--card:#1c2b3b;--ink:#ecf3ff;--muted:#afc1d3;--border:#39536b;}
+@media(max-width:420px){.top{padding:10px 12px}.top .brand{font-size:12px}.top .top-logo{font-size:21px}.tabs{padding:8px 9px;gap:5px}.tabs button{padding:9px 3px;font-size:11px}.card{padding:14px}.space-post{padding:14px}}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
