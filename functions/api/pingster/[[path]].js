@@ -30,6 +30,23 @@ export async function onRequest({request,env,params}){try{
   const theme=['classic','friendster'].includes(b.theme)?b.theme:'classic';const colour=['pink','purple','mint','orange','blue'].includes(b.colour)?b.colour:'pink';
   await db.prepare('INSERT INTO pingster_profiles(user_id,bio,birthday,food,country,movies,songs,hobbies,motto,theme,colour) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET bio=excluded.bio,birthday=excluded.birthday,food=excluded.food,country=excluded.country,movies=excluded.movies,songs=excluded.songs,hobbies=excluded.hobbies,motto=excluded.motto,theme=excluded.theme,colour=excluded.colour').bind(me.id,...v,theme,colour).run();return json({ok:true});
  }
+ if(route==='/space'&&method==='GET'){
+  // Friends-only timeline: a post is visible only if its wall owner is the viewer or an accepted friend.
+  const before=Number(q.get('before')||0);
+  const cursor=Number.isSafeInteger(before)&&before>0?before:Date.now()+1;
+  const rows=await db.prepare(`SELECT p.id,p.owner_id,p.author_id,p.body,p.photo_id,p.radio_name,p.radio_url,p.created_at,
+   u.name AS author_name, wall.name AS owner_name, pic.avatar_photo_id AS author_avatar_id,
+   (SELECT COUNT(*) FROM pingster_likes l WHERE l.post_id=p.id) AS likes,
+   (SELECT COUNT(*) FROM pingster_comments c WHERE c.post_id=p.id) AS comments,
+   (SELECT COUNT(*) FROM pingster_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked
+   FROM pingster_posts p JOIN users u ON u.id=p.author_id JOIN users wall ON wall.id=p.owner_id
+   LEFT JOIN pingster_profiles pic ON pic.user_id=p.author_id
+   WHERE p.created_at < ? AND (p.owner_id=? OR EXISTS
+    (SELECT 1 FROM friends f WHERE (f.user_id=? AND f.friend_id=p.owner_id) OR (f.friend_id=? AND f.user_id=p.owner_id)))
+   ORDER BY p.created_at DESC,p.id DESC LIMIT 21`).bind(me.id,cursor,me.id,me.id,me.id).all();
+  const all=rows.results||[];const more=all.length>20;const posts=all.slice(0,20);
+  return json({posts,more,next:more&&posts.length?posts[posts.length-1].created_at:null});
+ }
  if(route==='/posts'&&method==='GET'){
   const user=q.get('user')||me.id;await see(user);
   const rows=await db.prepare(`SELECT p.id,p.owner_id,p.author_id,p.body,p.photo_id,p.radio_name,p.radio_url,p.created_at,u.name AS author_name,(SELECT COUNT(*) FROM pingster_likes l WHERE l.post_id=p.id) AS likes,(SELECT COUNT(*) FROM pingster_comments c WHERE c.post_id=p.id) AS comments,(SELECT COUNT(*) FROM pingster_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked FROM pingster_posts p JOIN users u ON u.id=p.author_id WHERE p.owner_id=? ORDER BY p.created_at DESC LIMIT 60`).bind(me.id,user).all();return json({posts:rows.results||[]});
