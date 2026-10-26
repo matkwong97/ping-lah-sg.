@@ -76,7 +76,9 @@ export async function onRequest({request,env,params}){try{
  if(image&&method==='GET'){
   const row=await db.prepare('SELECT owner_id,image FROM pingster_photos WHERE id=?').bind(image).first();if(!row)return json({error:'Photo unavailable'},404);
   if(!(await friend(row.owner_id))){const shared=await db.prepare('SELECT owner_id FROM pingster_posts WHERE photo_id=?').bind(image).first();if(!shared||!(await friend(shared.owner_id)))return json({error:'Friends only'},403)}
-  return new Response(row.image,{headers:{'content-type':'image/jpeg','cache-control':'private,max-age=120','x-content-type-options':'nosniff'}});
+  const stored=row.image;const photoBytes=stored instanceof ArrayBuffer?new Uint8Array(stored):stored instanceof Uint8Array?stored:Array.isArray(stored)?new Uint8Array(stored):stored&&stored.type==='Buffer'&&Array.isArray(stored.data)?new Uint8Array(stored.data):null;
+  if(!photoBytes||photoBytes.length<4||photoBytes[0]!==255||photoBytes[1]!==216)return json({error:'Photo data could not be decoded'},500);
+  return new Response(photoBytes,{headers:{'content-type':'image/jpeg','cache-control':'private,max-age=120','x-content-type-options':'nosniff'}});
  }
  return json({error:'Unknown Pingster endpoint'},404);
  }catch(e){return json({error:String(e.message||e)},500)}}
