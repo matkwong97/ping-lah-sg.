@@ -18,6 +18,8 @@ export async function onRequest({request,env,params}){try{
   const notifications=await db.prepare('SELECT COUNT(*) AS n FROM pingster_notifications WHERE user_id=? AND read_at IS NULL').bind(me.id).first();
   return json({me,people:people.results||[],unread:notifications?.n||0});
  }
+ if(route==='/birthdays'&&method==='GET'){const r=await db.prepare(`SELECT u.id,u.name,p.birthday FROM users u JOIN pingster_profiles p ON p.user_id=u.id WHERE p.birthday IS NOT NULL AND p.birthday<>'' AND u.id<>? AND EXISTS(SELECT 1 FROM friends f WHERE (f.user_id=? AND f.friend_id=u.id) OR (f.friend_id=? AND f.user_id=u.id)) LIMIT 150`).bind(me.id,me.id,me.id).all();return json({friends:r.results||[]})}
+ if(route==='/notification-post'&&method==='GET'){const n=await db.prepare('SELECT p.id,p.owner_id FROM pingster_posts p WHERE p.id=?').bind(q.get('id')||'').first();if(!n)return json({post:null});await see(n.owner_id);return json({post:n})}
  if(route==='/profile'&&method==='GET'){
   const user=q.get('user')||me.id;await see(user);
   const row=await db.prepare('SELECT u.id,u.name,p.bio,p.birthday,p.food,p.country,p.movies,p.songs,p.hobbies,p.motto,p.theme,p.colour,p.avatar_photo_id FROM users u LEFT JOIN pingster_profiles p ON p.user_id=u.id WHERE u.id=?').bind(user).first();
@@ -57,7 +59,10 @@ export async function onRequest({request,env,params}){try{
   if(b.radio_name&&b.radio_url){station=String(b.radio_name).slice(0,120);url=String(b.radio_url);if(!/^https:\/\//i.test(url)||url.length>700)return json({error:'Invalid radio link'},400)}
   if(!msg&&!photo&&!station)return json({error:'Write something or attach a Pocket Cam photo'},400);
   if(photo){const p=await db.prepare('SELECT id FROM pingster_photos WHERE id=? AND owner_id=?').bind(photo,me.id).first();if(!p)return json({error:'Pocket Cam photo not found'},400)}
-  const post=id();await db.prepare('INSERT INTO pingster_posts(id,owner_id,author_id,body,photo_id,radio_name,radio_url,created_at) VALUES(?,?,?,?,?,?,?,?)').bind(post,owner,me.id,msg,photo||null,station||null,url||null,t()).run();await notify(owner,'wall',post,me.id);return json({ok:true,id:post});
+  const post=id();await db.prepare('INSERT INTO pingster_posts(id,owner_id,author_id,body,photo_id,radio_name,radio_url,created_at) VALUES(?,?,?,?,?,?,?,?)').bind(post,owner,me.id,msg,photo||null,station||null,url||null,t()).run();await notify(owner,'wall',post,me.id);
+  const candidates=await db.prepare(`SELECT u.id,u.name FROM users u WHERE u.id<>? AND EXISTS(SELECT 1 FROM friends f WHERE (f.user_id=? AND f.friend_id=u.id) OR (f.friend_id=? AND f.user_id=u.id)) LIMIT 120`).bind(me.id,me.id,me.id).all();
+  for(const person of candidates.results||[]){if(msg.toLocaleLowerCase().includes('@'+person.name.toLocaleLowerCase())&&person.id!==owner)await notify(person.id,'tag',post,me.id)}
+  return json({ok:true,id:post});
  }
  const postId=route.match(/^\/posts\/([a-f0-9-]+)$/)?.[1];
  if(postId&&method==='DELETE'){
