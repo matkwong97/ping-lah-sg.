@@ -226,3 +226,17 @@ body.messenger-retro .msn-chat-window .msn-message.new-arrival .msn-message-text
 .ping-tag-picker{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0}.ping-tag-picker label{font-size:12px}.ping-tag-picker select{flex:1;min-width:130px;max-width:230px}.ping-tag-picker button{min-height:38px}
 .ping-tag{border:0;background:none;color:#3972ae;text-decoration:underline;font:inherit;padding:0;cursor:pointer}.ping-birthday{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 0;border-bottom:1px solid rgba(128,128,128,.18);flex-wrap:wrap}.ping-birthday small{display:block;opacity:.75;margin-top:3px}
 @media(max-width:480px){.ping-birthday .actions{width:100%}.ping-birthday .actions button{flex:1}.ping-video-start span,.ping-chat-video button span{font-size:12px}}
+
+/* Friendship UX: compact classic messenger bubbles */
+.msn-chat-window .msn-message{margin-bottom:7px!important}
+.msn-chat-window .msn-message-head{margin-bottom:3px!important;font-size:11px;opacity:.82}
+.msn-chat-window .msn-message-text{padding:9px 13px!important;border-radius:17px!important;cursor:pointer;touch-action:pan-y;transition:filter .15s ease}
+.msn-chat-window .msn-message.mine .msn-message-text{border-bottom-right-radius:5px!important}
+.msn-chat-window .msn-message.theirs .msn-message-text{border-bottom-left-radius:5px!important}
+.msn-chat-window .msn-message-text:active{filter:brightness(1.07)}
+.msn-chat-window .msn-message-actions{min-height:0;margin-top:2px}
+.msn-chat-window .msn-react-trigger{opacity:.38;min-height:22px}
+.msn-chat-window .msn-reaction-picker .ping-reply-action{font-size:12px;width:auto;border-radius:12px;padding:5px 9px;font-weight:650}
+.ping-reply-preview{display:flex;align-items:center;gap:10px;background:#dbe9f7;color:#263e58;border-left:3px solid #427bb5;padding:7px 10px;font-size:12px;border-radius:8px;margin:5px 0;max-width:100%}
+.ping-reply-preview[hidden]{display:none!important}.ping-reply-preview span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ping-reply-preview button{border:0;background:transparent;padding:1px 6px;font-size:18px}
+body.dark .ping-reply-preview{background:#344a60;color:#fff}

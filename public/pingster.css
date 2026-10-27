@@ -72,3 +72,5 @@ body.night.style-classic{--bg:#111c29;--card:#1c2b3b;--ink:#ecf3ff;--muted:#afc1
 .ping-mention-avatar{width:30px;height:30px;border-radius:50%;background:var(--bg);color:var(--accent);display:grid;place-items:center;font-size:13px;flex-shrink:0;}
 .ping-tag{font-size:inherit;line-height:inherit;font-weight:600;padding:0;vertical-align:baseline;text-underline-offset:2px;}
 @media(max-width:420px){.tabs{gap:5px;padding:8px 10px}.tabs>button{font-size:12px;padding:10px 3px}.ping-more-wrap{min-width:68px}.ping-more-wrap>.ping-more{font-size:12px;padding:8px 5px}}
+
+.ping-today-note{padding:12px 14px;margin-bottom:14px;border:1px solid #e7d7ad;border-radius:13px;background:#fff9e8;font-size:14px;color:#51452a}.ping-today-note>strong{display:block;margin-bottom:7px}.ping-today-note>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}.ping-today-note>div span{flex:1;font-weight:650}.ping-today-note button{font-size:12px;padding:6px 9px;border-radius:9px}.dark .ping-today-note,body.dark .ping-today-note{background:#3b3528;color:#fff0ce;border-color:#6a5a39}
