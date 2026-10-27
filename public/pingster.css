@@ -50,3 +50,25 @@ body.night.style-classic{--bg:#111c29;--card:#1c2b3b;--ink:#ecf3ff;--muted:#afc1
 .ping-tag-picker{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0}.ping-tag-picker label{font-size:12px}.ping-tag-picker select{flex:1;min-width:130px;max-width:230px}.ping-tag-picker button{min-height:38px}
 .ping-tag{border:0;background:none;color:#3972ae;text-decoration:underline;font:inherit;padding:0;cursor:pointer}.ping-birthday{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 0;border-bottom:1px solid rgba(128,128,128,.18);flex-wrap:wrap}.ping-birthday small{display:block;opacity:.75;margin-top:3px}
 @media(max-width:480px){.ping-birthday .actions{width:100%}.ping-birthday .actions button{flex:1}.ping-video-start span,.ping-chat-video button span{font-size:12px}}
+
+/* Friendship UI refinement: uncluttered navigation and contextual mentions. */
+.tabs{align-items:stretch;overflow:visible;gap:6px;padding:9px max(12px,calc((100vw - 720px)/2));}
+.tabs>button{flex:1 1 0;min-width:0;max-width:none;font-size:clamp(12px,2.9vw,14px);padding:10px 5px;white-space:nowrap;}
+.ping-more-wrap{position:relative;flex:0 0 auto;display:flex;align-items:stretch;min-width:74px;}
+.ping-more-wrap>.ping-more{width:100%;min-height:44px;font-size:clamp(12px,2.9vw,14px);padding:9px 8px;white-space:nowrap;}
+.ping-more.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ping-more-menu{position:absolute;z-index:25;top:calc(100% + 8px);right:0;min-width:184px;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:6px;box-shadow:0 12px 30px #0002;}
+.ping-more-menu[hidden],.ping-mention-list[hidden]{display:none!important}
+.ping-more-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:12px 13px;font-size:14px;font-weight:600;border-radius:8px;}
+.ping-more-menu button:hover,.ping-more-menu button:focus-visible{background:var(--bg)}
+.ping-composer{position:relative;margin-top:7px;}
+.ping-composer textarea{margin-bottom:0;font-size:16px;line-height:1.5;min-height:106px;}
+.ping-composer-hint{font-size:12px;color:var(--muted);margin:7px 0 12px;font-weight:400;}
+.ping-composer-hint strong{color:var(--accent)}
+.ping-mention-list{position:absolute;z-index:8;left:0;right:0;top:calc(100% + 5px);max-height:240px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px #0002;padding:5px;}
+.ping-mention-option{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;text-align:left;border:0;border-radius:9px;background:transparent;font-size:14px;font-weight:600;}
+.ping-mention-option.selected,.ping-mention-option:hover{background:var(--bg)}
+.ping-mention-option small{margin-left:auto;font-size:11px;font-weight:400;}
+.ping-mention-avatar{width:30px;height:30px;border-radius:50%;background:var(--bg);color:var(--accent);display:grid;place-items:center;font-size:13px;flex-shrink:0;}
+.ping-tag{font-size:inherit;line-height:inherit;font-weight:600;padding:0;vertical-align:baseline;text-underline-offset:2px;}
+@media(max-width:420px){.tabs{gap:5px;padding:8px 10px}.tabs>button{font-size:12px;padding:10px 3px}.ping-more-wrap{min-width:68px}.ping-more-wrap>.ping-more{font-size:12px;padding:8px 5px}}
