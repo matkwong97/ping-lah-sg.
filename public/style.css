@@ -240,3 +240,9 @@ body.messenger-retro .msn-chat-window .msn-message.new-arrival .msn-message-text
 .ping-reply-preview{display:flex;align-items:center;gap:10px;background:#dbe9f7;color:#263e58;border-left:3px solid #427bb5;padding:7px 10px;font-size:12px;border-radius:8px;margin:5px 0;max-width:100%}
 .ping-reply-preview[hidden]{display:none!important}.ping-reply-preview span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ping-reply-preview button{border:0;background:transparent;padding:1px 6px;font-size:18px}
 body.dark .ping-reply-preview{background:#344a60;color:#fff}
+
+/* v52/v26: reaction controls are summoned by tapping a message, not always displayed. */
+.msn-chat-window .msn-message-actions:empty{display:none}
+.msn-chat-window .msn-message-actions{margin-top:3px;min-height:0}
+.msn-chat-window .msn-message-text{cursor:pointer}
+.msn-chat-window .msn-message-text:focus-visible{outline:2px solid #83b9e5;outline-offset:3px}
